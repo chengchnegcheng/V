@@ -4,12 +4,20 @@ import (
 	"net/http"
 	"strings"
 	"v/database"
+	"v/settings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 )
 
-var JWTSecret = []byte("your-secret-key") // TODO: Move to config
+// JWTSecret will be set from settings
+var JWTSecret []byte
+
+// InitJWTSecret initializes the JWT secret from settings
+func InitJWTSecret(settingsMgr *settings.Manager) {
+	// Get the JWT secret from settings
+	JWTSecret = []byte(settingsMgr.Get().Security.JWTSecret)
+}
 
 // Auth middleware for checking JWT token
 func Auth() gin.HandlerFunc {

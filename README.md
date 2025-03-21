@@ -24,7 +24,7 @@ V 是一个功能强大的多协议代理面板，基于 x-ui 项目重新开发
 
 ```bash
 # 下载最新版本
-wget https://github.com/yourusername/v/releases/latest/download/v-linux-amd64.tar.gz
+wget https://github.com/v-panel/v/releases/latest/download/v-linux-amd64.tar.gz
 
 # 解压文件
 tar -zxvf v-linux-amd64.tar.gz
@@ -40,7 +40,7 @@ cd v
 
 ```bash
 # 克隆仓库
-git clone https://github.com/yourusername/v.git
+git clone https://github.com/v-panel/v.git
 
 # 进入项目目录
 cd v
@@ -68,11 +68,16 @@ go build -o v
 
 配置文件位于 `config/settings.json`，主要配置项包括:
 
-- 监听地址和端口
-- 数据库设置
-- 日志级别
-- 通知设置 (Email)
-- 证书设置
+- 站点设置 (站点名称、是否允许注册)
+- 流量设置 (默认限制、统计间隔)
+- SSL 证书设置 (自动更新、提供商)
+- 代理设置 (默认端口、最大连接数)
+- 安全设置 (JWT密钥、令牌过期时间)
+- 通知设置 (Email配置)
+- 备份设置 (备份间隔、保留天数)
+- 监控设置 (监控间隔、阈值设置)
+- 日志设置 (日志级别、文件配置)
+- 管理员设置 (管理员邮箱)
 
 ## 项目文档
 
@@ -100,6 +105,8 @@ go build -o v
 ├── config/         # 配置管理
 ├── data/           # 数据存储
 ├── db/             # 数据库迁移
+├── database/       # 数据库操作
+├── errors/         # 错误处理
 ├── logger/         # 日志系统
 ├── middleware/     # 中间件
 ├── model/          # 数据模型
@@ -110,7 +117,11 @@ go build -o v
 ├── security/       # 安全相关
 ├── server/         # 服务器
 ├── settings/       # 设置管理
+├── ssl/            # SSL证书
+├── stats/          # 统计功能
 ├── traffic/        # 流量管理
+├── user/           # 用户管理
+├── utils/          # 工具函数
 ├── web/            # 前端界面
 └── main.go         # 主程序入口
 ```
@@ -118,13 +129,19 @@ go build -o v
 ## 常见问题
 
 1. **如何更改默认端口?**
-   修改配置文件中的 `listen` 字段，或使用命令行参数 `--listen :新端口号`
+   修改配置文件中的 `server.port` 字段，或使用命令行参数 `--listen :新端口号`
 
 2. **如何备份数据?**
-   数据存储在 `data/v.db` 文件中，备份此文件即可
+   数据存储在 `data/v.db` 文件中，备份此文件即可。也可以通过管理界面的备份功能进行操作。
 
 3. **如何设置自动启动?**
    请参考 [故障排除指南](troubleshooting_guide.md) 中的系统服务配置部分
+
+4. **如何更新 SSL 证书?**
+   SSL 证书会自动更新，也可以通过管理界面手动更新
+
+5. **如何修改 JWT 密钥?**
+   在 `config/settings.json` 文件中修改 `security.jwt_secret` 字段
 
 ## 开发计划
 
@@ -132,6 +149,8 @@ go build -o v
 - [ ] 两因素认证
 - [ ] 更多优化和性能提升
 - [ ] 移动端应用
+- [ ] API 文档完善
+- [ ] 单元测试覆盖率提升
 
 ## 贡献代码
 

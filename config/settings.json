@@ -1,0 +1,82 @@
+{
+  "site": {
+    "name": "V Panel",
+    "description": "多协议代理面板",
+    "allow_register": false,
+    "maintenance_mode": false
+  },
+  "traffic": {
+    "default_limit": 10737418240,
+    "stats_interval": 3600000000000,
+    "warning_percent": 80,
+    "account_expire_days": 30
+  },
+  "ssl": {
+    "auto_renew": true,
+    "renew_days": 30,
+    "provider": "letsencrypt",
+    "email": "admin@example.com",
+    "cert_dir": "cert",
+    "acme_url": "https://acme-v02.api.letsencrypt.org/directory",
+    "challenge_type": "http-01",
+    "check_interval": 86400000000000,
+    "renew_interval": 86400000000000,
+    "expiry_warning_days": 604800000000000,
+    "renew_before_days": 2592000000000000
+  },
+  "proxy": {
+    "default_port": 10000,
+    "allowed_ips": [],
+    "blocked_ips": [],
+    "max_connections": 100
+  },
+  "security": {
+    "jwt_secret": "YqemkNgxPUY5b96CJzH2d3vRtw7Z8FsD4LfKSVG",
+    "token_expiry": 86400000000000,
+    "min_password_length": 8,
+    "login_attempts": 5,
+    "lockout_time": 1800000000000
+  },
+  "notification": {
+    "enable_email": false,
+    "smtp_host": "smtp.example.com",
+    "smtp_port": 587,
+    "smtp_user": "user@example.com",
+    "smtp_password": "password",
+    "from_email": "noreply@example.com",
+    "from_name": "V Panel"
+  },
+  "backup": {
+    "enable": true,
+    "interval": 86400000000000,
+    "retention": 7,
+    "path": "backup",
+    "compression": true
+  },
+  "monitor": {
+    "interval": 60000000000,
+    "cpu_threshold": 80,
+    "memory_threshold": 80,
+    "disk_threshold": 80,
+    "enable_cpu_alert": true,
+    "enable_memory_alert": true,
+    "enable_disk_alert": true,
+    "alert_interval": 3600
+  },
+  "log": {
+    "level": "info",
+    "console_log": true,
+    "file_log": true,
+    "file_path": "logs/v.log",
+    "max_size": 10,
+    "max_age": 7,
+    "max_backups": 5,
+    "compress": true,
+    "error_file_path": "logs/error.log",
+    "separate_error": true,
+    "rotate_time": 86400000000000
+  },
+  "admin": {
+    "email": "admin@example.com"
+  }
+} 

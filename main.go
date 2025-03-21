@@ -17,6 +17,7 @@ import (
 	"v/monitor"
 	"v/notification"
 	"v/protocol"
+	"v/server/middleware"
 	"v/settings"
 	"v/traffic"
 
@@ -58,6 +59,9 @@ func main() {
 		log.Fatal("启动设置管理器失败: %v", err)
 	}
 	defer settingsMgr.Stop()
+
+	// 初始化JWT密钥
+	middleware.InitJWTSecret(settingsMgr)
 
 	// 获取设置
 	// 注释掉未使用的变量

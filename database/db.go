@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"v/common"
 	"v/model"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -156,7 +157,7 @@ func InitDBWithConfig(dbPath string, config *DBConfig) error {
 	}
 
 	// Run migrations
-	if err := DBInstance.AutoMigrate(&model.Proxy{}); err != nil {
+	if err := DBInstance.AutoMigrate(&common.Proxy{}); err != nil {
 		return fmt.Errorf("failed to run migrations: %v", err)
 	}
 
@@ -456,13 +457,13 @@ func (db *Database) ListUsers(offset, limit int) ([]*model.User, error) {
 }
 
 // CreateProxy creates a new proxy
-func (db *Database) CreateProxy(proxy *model.Proxy) error {
+func (db *Database) CreateProxy(proxy *common.Proxy) error {
 	return db.Create(proxy).Error
 }
 
 // GetProxy returns a proxy by ID
-func (db *Database) GetProxy(id uint) (*model.Proxy, error) {
-	var proxy model.Proxy
+func (db *Database) GetProxy(id uint) (*common.Proxy, error) {
+	var proxy common.Proxy
 	if err := db.First(&proxy, id).Error; err != nil {
 		return nil, err
 	}
@@ -470,8 +471,8 @@ func (db *Database) GetProxy(id uint) (*model.Proxy, error) {
 }
 
 // GetProxiesByUser returns proxies by user ID
-func (db *Database) GetProxiesByUser(userID uint) ([]*model.Proxy, error) {
-	var proxies []*model.Proxy
+func (db *Database) GetProxiesByUser(userID uint) ([]*common.Proxy, error) {
+	var proxies []*common.Proxy
 	if err := db.Where("user_id = ?", userID).Find(&proxies).Error; err != nil {
 		return nil, err
 	}
@@ -479,18 +480,18 @@ func (db *Database) GetProxiesByUser(userID uint) ([]*model.Proxy, error) {
 }
 
 // UpdateProxy updates a proxy
-func (db *Database) UpdateProxy(proxy *model.Proxy) error {
+func (db *Database) UpdateProxy(proxy *common.Proxy) error {
 	return db.Save(proxy).Error
 }
 
 // DeleteProxy deletes a proxy
 func (db *Database) DeleteProxy(id uint) error {
-	return db.Delete(&model.Proxy{}, id).Error
+	return db.Delete(&common.Proxy{}, id).Error
 }
 
 // ListProxies returns a list of proxies
-func (db *Database) ListProxies(offset, limit int) ([]*model.Proxy, error) {
-	var proxies []*model.Proxy
+func (db *Database) ListProxies(offset, limit int) ([]*common.Proxy, error) {
+	var proxies []*common.Proxy
 	if err := db.Offset(offset).Limit(limit).Find(&proxies).Error; err != nil {
 		return nil, err
 	}
@@ -499,7 +500,7 @@ func (db *Database) ListProxies(offset, limit int) ([]*model.Proxy, error) {
 
 // UpdateTraffic updates traffic statistics for a proxy
 func (db *Database) UpdateTraffic(id uint, upload, download int64) error {
-	return db.Model(&model.Proxy{}).Where("id = ?", id).Updates(map[string]interface{}{
+	return db.Model(&common.Proxy{}).Where("id = ?", id).Updates(map[string]interface{}{
 		"upload":   upload,
 		"download": download,
 	}).Error
@@ -507,17 +508,17 @@ func (db *Database) UpdateTraffic(id uint, upload, download int64) error {
 
 // Enable enables a proxy
 func (db *Database) Enable(id uint) error {
-	return db.Model(&model.Proxy{}).Where("id = ?", id).Update("enabled", true).Error
+	return db.Model(&common.Proxy{}).Where("id = ?", id).Update("enabled", true).Error
 }
 
 // Disable disables a proxy
 func (db *Database) Disable(id uint) error {
-	return db.Model(&model.Proxy{}).Where("id = ?", id).Update("enabled", false).Error
+	return db.Model(&common.Proxy{}).Where("id = ?", id).Update("enabled", false).Error
 }
 
 // UpdateLastActive updates the last active time for a proxy
 func (db *Database) UpdateLastActive(id uint) error {
-	return db.Model(&model.Proxy{}).Where("id = ?", id).Update("last_active_at", time.Now()).Error
+	return db.Model(&common.Proxy{}).Where("id = ?", id).Update("last_active_at", time.Now()).Error
 }
 
 // BackupDB creates a backup of the database
@@ -943,13 +944,13 @@ func (m *Manager) ListUsers(offset, limit int) ([]*model.User, error) {
 }
 
 // CreateProxy creates a new proxy
-func (m *Manager) CreateProxy(proxy *model.Proxy) error {
+func (m *Manager) CreateProxy(proxy *common.Proxy) error {
 	return m.db.Create(proxy).Error
 }
 
 // GetProxy gets a proxy by ID
-func (m *Manager) GetProxy(id int64) (*model.Proxy, error) {
-	var proxy model.Proxy
+func (m *Manager) GetProxy(id int64) (*common.Proxy, error) {
+	var proxy common.Proxy
 	if err := m.db.First(&proxy, id).Error; err != nil {
 		return nil, err
 	}
@@ -957,8 +958,8 @@ func (m *Manager) GetProxy(id int64) (*model.Proxy, error) {
 }
 
 // GetProxiesByUser gets proxies by user ID
-func (m *Manager) GetProxiesByUser(userID int64) ([]*model.Proxy, error) {
-	var proxies []*model.Proxy
+func (m *Manager) GetProxiesByUser(userID int64) ([]*common.Proxy, error) {
+	var proxies []*common.Proxy
 	if err := m.db.Where("user_id = ?", userID).Find(&proxies).Error; err != nil {
 		return nil, err
 	}
@@ -966,18 +967,18 @@ func (m *Manager) GetProxiesByUser(userID int64) ([]*model.Proxy, error) {
 }
 
 // UpdateProxy updates a proxy
-func (m *Manager) UpdateProxy(proxy *model.Proxy) error {
+func (m *Manager) UpdateProxy(proxy *common.Proxy) error {
 	return m.db.Save(proxy).Error
 }
 
 // DeleteProxy deletes a proxy
 func (m *Manager) DeleteProxy(id int64) error {
-	return m.db.Delete(&model.Proxy{}, id).Error
+	return m.db.Delete(&common.Proxy{}, id).Error
 }
 
 // ListProxies lists proxies with pagination
-func (m *Manager) ListProxies(offset, limit int) ([]*model.Proxy, error) {
-	var proxies []*model.Proxy
+func (m *Manager) ListProxies(offset, limit int) ([]*common.Proxy, error) {
+	var proxies []*common.Proxy
 	if err := m.db.Offset(offset).Limit(limit).Find(&proxies).Error; err != nil {
 		return nil, err
 	}
@@ -1043,26 +1044,22 @@ func (db *Database) QueryRow(query string, args ...interface{}) *sql.Row {
 }
 
 // GetAllProxies 获取所有代理配置
-func (db *Database) GetAllProxies() ([]*model.Proxy, error) {
-	var proxies []*model.Proxy
+func (db *Database) GetAllProxies() ([]*common.Proxy, error) {
+	var proxies []*common.Proxy
 	if err := db.Find(&proxies).Error; err != nil {
 		return nil, err
 	}
 	return proxies, nil
 }
 
-// UpdateProxyStats 更新代理流量统计
-func (db *Database) UpdateProxyStats(proxy *model.Proxy) error {
-	return db.Model(&model.Proxy{}).Where("id = ?", proxy.ID).
-		Updates(map[string]interface{}{
-			"upload":   proxy.Upload,
-			"download": proxy.Download,
-		}).Error
+// UpdateProxyStats 更新代理统计信息
+func (db *Database) UpdateProxyStats(proxy *common.Proxy) error {
+	return db.Save(proxy).Error
 }
 
 // GetProxyByID 获取指定ID的代理
-func (db *Database) GetProxyByID(id int64) (*model.Proxy, error) {
-	var proxy model.Proxy
+func (db *Database) GetProxyByID(id int64) (*common.Proxy, error) {
+	var proxy common.Proxy
 	if err := db.First(&proxy, id).Error; err != nil {
 		return nil, err
 	}
@@ -1070,8 +1067,8 @@ func (db *Database) GetProxyByID(id int64) (*model.Proxy, error) {
 }
 
 // GetUserProxies 获取用户的所有代理
-func (db *Database) GetUserProxies(userID int64) ([]*model.Proxy, error) {
-	var proxies []*model.Proxy
+func (db *Database) GetUserProxies(userID int64) ([]*common.Proxy, error) {
+	var proxies []*common.Proxy
 	if err := db.Where("user_id = ?", userID).Find(&proxies).Error; err != nil {
 		return nil, err
 	}
@@ -1091,16 +1088,8 @@ func (db *Database) DeleteDailyStatsBefore(date time.Time) error {
 // ListDailyStatsByUserID 获取用户的日流量统计
 func (db *Database) ListDailyStatsByUserID(userID int64, startDate, endDate time.Time) ([]*model.DailyStats, error) {
 	var stats []*model.DailyStats
-	if err := db.Where("user_id = ? AND date BETWEEN ? AND ?", userID, startDate, endDate).
-		Order("date DESC").Find(&stats).Error; err != nil {
-		return nil, err
-	}
-	return stats, nil
-}
-
-// UpdateProxy 更新代理配置
-func (db *Database) UpdateProxy(proxy *model.Proxy) error {
-	return db.Save(proxy).Error
+	err := db.Where("user_id = ? AND date BETWEEN ? AND ?", userID, startDate, endDate).Find(&stats).Error
+	return stats, err
 }
 
 // GetDBInstance returns the global database instance

@@ -11,6 +11,7 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -189,9 +190,63 @@ func (m *Manager) validateInput(domain string) error {
 		return errors.New(errors.ErrBadRequest, "Domain is required", nil)
 	}
 
-	// TODO: Implement domain validation
+	// Domain validation
+	// Check if the domain has a valid format
+	if !isValidDomain(domain) {
+		return errors.New(errors.ErrBadRequest, "Invalid domain format", nil)
+	}
 
 	return nil
+}
+
+// isValidDomain checks if a domain name is valid
+func isValidDomain(domain string) bool {
+	// Check for basic domain format
+	// - Contains at least one dot
+	// - No spaces
+	// - No special characters except dots and hyphens
+	// - Does not start or end with a hyphen
+	// - Each part is 1-63 characters
+
+	if len(domain) > 253 {
+		return false
+	}
+
+	// Domain must contain at least one dot
+	if !strings.Contains(domain, ".") {
+		return false
+	}
+
+	// Split the domain into parts
+	parts := strings.Split(domain, ".")
+
+	// Check each part
+	for _, part := range parts {
+		// Empty parts are not allowed
+		if len(part) == 0 {
+			return false
+		}
+
+		// Parts must be 1-63 characters
+		if len(part) > 63 {
+			return false
+		}
+
+		// Parts must not start or end with a hyphen
+		if strings.HasPrefix(part, "-") || strings.HasSuffix(part, "-") {
+			return false
+		}
+
+		// Parts must only contain alphanumeric characters and hyphens
+		for _, r := range part {
+			if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') ||
+				(r >= '0' && r <= '9') || r == '-') {
+				return false
+			}
+		}
+	}
+
+	return true
 }
 
 // generateCertificate generates a new SSL certificate
