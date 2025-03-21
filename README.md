@@ -74,6 +74,47 @@ go build -o v
 - 通知设置 (Email)
 - 证书设置
 
+## 项目文档
+
+项目包含以下文档，提供更详细的信息：
+
+- [最终报告](final_report.md)：项目功能实现状态和发现的问题
+- [SSL实现计划](ssl_implementation_plan.md)：SSL证书管理的实现细节
+- [测试计划](testing_plan.md)：项目测试策略和方法
+- [故障排除指南](troubleshooting_guide.md)：常见问题解决方案
+- [完成清单](completion_checklist.md)：功能完成情况和待改进事项
+- [开发总结](development_summary.md)：开发状态总结和下一步计划
+
+## 项目结构
+
+主要目录结构：
+
+```
+.
+├── api/            # API接口定义
+├── audit/          # 审计功能
+├── auth/           # 身份验证
+├── backup/         # 备份功能
+├── cert/           # SSL证书管理
+├── common/         # 通用功能和类型
+├── config/         # 配置管理
+├── data/           # 数据存储
+├── db/             # 数据库迁移
+├── logger/         # 日志系统
+├── middleware/     # 中间件
+├── model/          # 数据模型
+├── monitor/        # 系统监控
+├── notification/   # 通知系统
+├── protocol/       # 协议管理
+├── proxy/          # 代理实现
+├── security/       # 安全相关
+├── server/         # 服务器
+├── settings/       # 设置管理
+├── traffic/        # 流量管理
+├── web/            # 前端界面
+└── main.go         # 主程序入口
+```
+
 ## 常见问题
 
 1. **如何更改默认端口?**
@@ -83,7 +124,7 @@ go build -o v
    数据存储在 `data/v.db` 文件中，备份此文件即可
 
 3. **如何设置自动启动?**
-   请参考 [安装文档](docs/installation.md) 中的系统服务配置部分
+   请参考 [故障排除指南](troubleshooting_guide.md) 中的系统服务配置部分
 
 ## 开发计划
 

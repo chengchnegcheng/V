@@ -40,6 +40,7 @@
    - 加强密码策略
    - 实施更严格的访问控制
    - 添加两因素认证(2FA)支持
+   - 修改硬编码的JWT密钥(auth.go中的TODO项)
 
 3. **国际化支持**
    - 添加多语言支持
@@ -49,6 +50,47 @@
    - 优化数据库查询
    - 改进流量统计算法
    - 增加缓存机制
+
+5. **功能实现**
+   - 完成代码中标记的TODO项目(共40+处，详见下方列表)
+
+## 待完成的TODO项目
+
+根据代码扫描，项目中存在以下待实现的功能：
+
+1. **认证与权限**
+   - 验证令牌和获取用户信息(middleware.go)
+   - 检查用户权限(middleware.go)
+   - 实现权限检查逻辑(middleware.go)
+   - 将JWT密钥移至配置文件(auth.go)
+   - 实现令牌失效机制(service.go)
+
+2. **数据库管理**
+   - 实现数据库备份(db.go)
+   - 实现数据库恢复(db.go)
+   - 实现数据库迁移(db.go)
+   - 实现数据库优化(db.go)
+
+3. **服务器与协议**
+   - 实现各协议服务器启动逻辑(trojan.go, vless.go, vmess.go)
+   - 实现各协议服务器停止逻辑(trojan.go, vless.go, vmess.go)
+   - 实现TCP和UDP处理逻辑(vless.go, vmess.go)
+   - 实现VLESS协议处理(vless.go)
+
+4. **API实现**
+   - 实现登录逻辑(server.go)
+   - 实现注册逻辑(server.go)
+   - 实现用户CRUD操作(server.go)
+   - 实现代理CRUD操作(server.go)
+   - 实现流量统计获取(server.go)
+   - 实现证书管理操作(server.go)
+   - 实现设置管理操作(server.go)
+   - 实现身份验证中间件(server.go)
+
+5. **其他功能**
+   - 实现域名验证(ssl.go)
+   - 实现用户搜索功能(user.go)
+   - 将管理员邮箱设为可配置(user.go)
 
 ## 下一步工作建议
 
