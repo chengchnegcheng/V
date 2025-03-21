@@ -37,10 +37,10 @@ func (h *Handler) Register(path string, handler http.HandlerFunc) {
 // Setup sets up the API routes
 func (h *Handler) Setup() {
 	// Add middleware
-	h.router.Use(middleware.Logging(h.log))
-	h.router.Use(middleware.Recovery(h.log))
-	h.router.Use(middleware.CORS())
-	h.router.Use(middleware.RateLimit())
+	h.router.Use(middleware.ToMuxMiddleware(middleware.Logging(h.log)))
+	h.router.Use(middleware.ToMuxMiddleware(middleware.Recovery(h.log)))
+	h.router.Use(middleware.ToMuxMiddleware(middleware.CORS()))
+	h.router.Use(middleware.ToMuxMiddleware(middleware.RateLimit()))
 
 	// Register handlers
 	for path, handler := range h.handlers {
@@ -56,31 +56,32 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.router.ServeHTTP(w, r)
 }
 
-// handleNotFound handles 404 errors
+// handleNotFound handles the not found route
 func (h *Handler) handleNotFound(w http.ResponseWriter, r *http.Request) {
-	h.handleError(w, errors.New(errors.ErrNotFound, "Not found", nil))
+	h.handleError(w, errors.ErrResourceNotFound)
 }
 
-// handleError handles API errors
+// handleError handles the error response
 func (h *Handler) handleError(w http.ResponseWriter, err error) {
-	var apiErr *errors.Error
-	if e, ok := err.(*errors.Error); ok {
-		apiErr = e
-	} else {
-		apiErr = errors.New(errors.ErrInternalServer, err.Error(), err)
-	}
-
-	// Log error
+	// Log the error
 	h.log.Error("API error", logger.Fields{
-		"code":    apiErr.Code,
-		"message": apiErr.Message,
-		"error":   apiErr.Err,
+		"error": err.Error(),
 	})
 
-	// Write response
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(apiErr.Code)
-	json.NewEncoder(w).Encode(apiErr)
+	// Handle custom errors
+	if e, ok := err.(*errors.Error); ok {
+		w.WriteHeader(e.Code)
+		h.handleResponse(w, map[string]interface{}{
+			"error": e.Message,
+		})
+		return
+	}
+
+	// Handle standard errors
+	w.WriteHeader(http.StatusInternalServerError)
+	h.handleResponse(w, map[string]interface{}{
+		"error": "Internal server error",
+	})
 }
 
 // handleResponse handles API responses

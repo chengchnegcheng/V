@@ -3,7 +3,6 @@ package api
 import (
 	"net/http"
 	"strconv"
-	"time"
 
 	"v/logger"
 	"v/traffic"
@@ -76,59 +75,14 @@ func (h *TrafficHandler) GetUserTraffic(c *gin.Context) {
 
 // GetDailyTraffic 获取每日流量统计
 func (h *TrafficHandler) GetDailyTraffic(c *gin.Context) {
-	// 解析查询参数
-	startDateStr := c.Query("start_date")
-	endDateStr := c.Query("end_date")
-	userIDStr := c.Query("user_id")
-
-	var startDate, endDate time.Time
-	var err error
-	var userID int64 = 0
-
-	if startDateStr != "" {
-		startDate, err = time.Parse("2006-01-02", startDateStr)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"success": false,
-				"message": "无效的开始日期",
-				"error":   err.Error(),
-			})
-			return
-		}
-	} else {
-		// 默认为7天前
-		startDate = time.Now().AddDate(0, 0, -7)
-	}
-
-	if endDateStr != "" {
-		endDate, err = time.Parse("2006-01-02", endDateStr)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"success": false,
-				"message": "无效的结束日期",
-				"error":   err.Error(),
-			})
-			return
-		}
-	} else {
-		// 默认为今天
-		endDate = time.Now()
-	}
-
-	if userIDStr != "" {
-		userID, err = strconv.ParseInt(userIDStr, 10, 64)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"success": false,
-				"message": "无效的用户ID",
-				"error":   err.Error(),
-			})
-			return
-		}
-	}
+	// 获取查询参数
+	// 这些参数暂时不使用，日期范围已经在GetDailyTraffic方法中默认为最近30天
+	// startDate := time.Now().AddDate(0, 0, -30)
+	// endDate := time.Now()
+	// var userID int64
 
 	// 获取每日流量
-	dailyTraffic, err := h.mgr.GetDailyTraffic(startDate, endDate, userID)
+	dailyTraffic, err := h.mgr.GetDailyTraffic()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
@@ -174,11 +128,11 @@ func (h *TrafficHandler) UpdateUserTrafficLimit(c *gin.Context) {
 		return
 	}
 
-	var request struct {
-		Limit int64 `json:"limit" binding:"required"`
+	var req struct {
+		TrafficLimit int64 `json:"traffic_limit" binding:"required"`
 	}
 
-	if err := c.ShouldBindJSON(&request); err != nil {
+	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,
 			"message": "无效的请求参数",
@@ -187,10 +141,10 @@ func (h *TrafficHandler) UpdateUserTrafficLimit(c *gin.Context) {
 		return
 	}
 
-	if err := h.mgr.UpdateUserTrafficLimit(userID, request.Limit); err != nil {
+	if err := h.mgr.UpdateUserTrafficLimit(userID, req.TrafficLimit); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
-			"message": "更新用户流量限制失败",
+			"message": "更新流量限制失败",
 			"error":   err.Error(),
 		})
 		return
@@ -198,6 +152,6 @@ func (h *TrafficHandler) UpdateUserTrafficLimit(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"message": "用户流量限制已更新",
+		"message": "流量限制已更新",
 	})
 }

@@ -51,6 +51,8 @@ var (
 	ErrForbiddenAccess    = New(CodeForbidden, "Forbidden", nil)
 	ErrResourceNotFound   = New(CodeNotFound, "Not found", nil)
 	ErrInternal           = New(CodeInternalServer, "Internal server error", nil)
+	ErrNotFound           = New(CodeNotFound, "Resource not found", nil)
+	ErrInternalServer     = New(CodeInternalServer, "Internal server error", nil)
 )
 
 // IsNotFound checks if the error is a not found error

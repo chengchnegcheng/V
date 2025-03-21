@@ -35,10 +35,7 @@ func OpenDB(dbPath string, logger *slog.Logger) (DB, error) {
 	db.SetMaxIdleConns(50)
 
 	// 初始化数据库
-	sqliteDB := &SQLiteDB{
-		db:     db,
-		logger: logger,
-	}
+	sqliteDB := NewSQLiteDB(db, logger)
 
 	// 初始化表结构
 	if err := sqliteDB.InitTables(); err != nil {

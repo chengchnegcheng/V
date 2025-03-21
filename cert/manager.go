@@ -569,3 +569,16 @@ func (u *User) GetRegistration() *registration.Resource {
 func (u *User) GetPrivateKey() crypto.PrivateKey {
 	return u.Key
 }
+
+// RenewCertificate 公开的更新证书方法
+func (m *CertManager) RenewCertificate(domain string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	cert, ok := m.certs[domain]
+	if !ok {
+		return fmt.Errorf("certificate not found for domain %s", domain)
+	}
+
+	return m.renewCertificate(domain, cert)
+}

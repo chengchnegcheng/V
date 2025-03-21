@@ -191,6 +191,7 @@ type DB interface {
 	DeleteProtocol(id int64) error
 	GetProtocolsByPort(port int) ([]*Protocol, error)
 	ListProtocols(page, pageSize int) ([]*Protocol, error)
+	GetTotalProtocols() (int64, error)
 	SearchProtocols(keyword string) ([]*Protocol, error)
 
 	// 协议统计相关
@@ -380,4 +381,33 @@ func getLoadAverage() ([]float64, error) {
 func getNetworkIO() (NetworkStats, error) {
 	// 示例实现，实际应根据操作系统获取
 	return NetworkStats{}, nil
+}
+
+// SystemTrafficStats 系统流量统计
+type SystemTrafficStats struct {
+	TotalUpload      int64     `json:"total_upload"`
+	TotalDownload    int64     `json:"total_download"`
+	TotalConnections int64     `json:"total_connections"`
+	DailyUpload      int64     `json:"daily_upload"`
+	DailyDownload    int64     `json:"daily_download"`
+	ActiveUsers      int64     `json:"active_users"`
+	UpdatedAt        time.Time `json:"updated_at"`
+}
+
+// DailyTraffic 每日流量统计
+type DailyTraffic struct {
+	Base
+	Date     time.Time `json:"date" db:"date"`
+	Upload   int64     `json:"upload" db:"upload"`
+	Download int64     `json:"download" db:"download"`
+}
+
+// UserTrafficLimit 用户流量限制
+type UserTrafficLimit struct {
+	UserID        int64     `json:"user_id"`
+	Username      string    `json:"username"`
+	TotalUpload   int64     `json:"total_upload"`
+	TotalDownload int64     `json:"total_download"`
+	TrafficLimit  int64     `json:"traffic_limit"`
+	UpdatedAt     time.Time `json:"updated_at"`
 }

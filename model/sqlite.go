@@ -18,6 +18,14 @@ type SQLiteDB struct {
 	logger *slog.Logger
 }
 
+// NewSQLiteDB creates a new SQLiteDB instance
+func NewSQLiteDB(db *sql.DB, logger *slog.Logger) *SQLiteDB {
+	return &SQLiteDB{
+		db:     db,
+		logger: logger,
+	}
+}
+
 // SQLiteDB combines the properly fixed implementations for the database interface.
 // This file should be saved with UTF-8 encoding.
 
@@ -2086,6 +2094,488 @@ func (db *SQLiteDB) DeleteDailyStatsBefore(date time.Time) error {
 	return err
 }
 
+// GetTotalBackups 获取备份总数
+func (db *SQLiteDB) GetTotalBackups() (int64, error) {
+	var count int64
+	err := db.db.QueryRow("SELECT COUNT(*) FROM backups").Scan(&count)
+	if err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
+// GetTotalUsers 获取用户总数
+func (db *SQLiteDB) GetTotalUsers() (int64, error) {
+	var count int64
+	err := db.db.QueryRow("SELECT COUNT(*) FROM users").Scan(&count)
+	if err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
+// GetUser 根据ID获取用户
+func (db *SQLiteDB) GetUser(id int64) (*User, error) {
+	query := `SELECT id, username, email, password, salt, role, status, traffic_limit, traffic_used, 
+              last_login_at, login_attempts, locked_until, is_admin, expire_at, created_at, updated_at 
+              FROM users WHERE id = ?`
+
+	user := &User{}
+	var lastLoginAt, lockedUntil, expireAt, createdAt, updatedAt sql.NullString
+
+	err := db.db.QueryRow(query, id).Scan(
+		&user.ID, &user.Username, &user.Email, &user.Password, &user.Salt, &user.Role, &user.Status,
+		&user.TrafficLimit, &user.TrafficUsed, &lastLoginAt, &user.LoginAttempts, &lockedUntil,
+		&user.IsAdmin, &expireAt, &createdAt, &updatedAt,
+	)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil // 用户不存在
+		}
+		return nil, err
+	}
+
+	// 处理可空时间字段
+	if lastLoginAt.Valid {
+		lastLogin, err := time.Parse("2006-01-02 15:04:05", lastLoginAt.String)
+		if err == nil {
+			user.LastLoginAt = &lastLogin
+		}
+	}
+
+	if lockedUntil.Valid {
+		locked, err := time.Parse("2006-01-02 15:04:05", lockedUntil.String)
+		if err == nil {
+			user.LockedUntil = &locked
+		}
+	}
+
+	if expireAt.Valid {
+		expire, err := time.Parse("2006-01-02 15:04:05", expireAt.String)
+		if err == nil {
+			user.ExpireAt = &expire
+		}
+	}
+
+	if createdAt.Valid {
+		user.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAt.String)
+	}
+
+	if updatedAt.Valid {
+		user.UpdatedAt, _ = time.Parse("2006-01-02 15:04:05", updatedAt.String)
+	}
+
+	return user, nil
+}
+
+// GetUserByEmail 根据邮箱获取用户
+func (db *SQLiteDB) GetUserByEmail(email string) (*User, error) {
+	query := `SELECT id, username, email, password, salt, role, status, traffic_limit, traffic_used, 
+              last_login_at, login_attempts, locked_until, is_admin, expire_at, created_at, updated_at 
+              FROM users WHERE email = ?`
+
+	user := &User{}
+	var lastLoginAt, lockedUntil, expireAt, createdAt, updatedAt sql.NullString
+
+	err := db.db.QueryRow(query, email).Scan(
+		&user.ID, &user.Username, &user.Email, &user.Password, &user.Salt, &user.Role, &user.Status,
+		&user.TrafficLimit, &user.TrafficUsed, &lastLoginAt, &user.LoginAttempts, &lockedUntil,
+		&user.IsAdmin, &expireAt, &createdAt, &updatedAt,
+	)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil // 用户不存在
+		}
+		return nil, err
+	}
+
+	// 处理可空时间字段
+	if lastLoginAt.Valid {
+		lastLogin, err := time.Parse("2006-01-02 15:04:05", lastLoginAt.String)
+		if err == nil {
+			user.LastLoginAt = &lastLogin
+		}
+	}
+
+	if lockedUntil.Valid {
+		locked, err := time.Parse("2006-01-02 15:04:05", lockedUntil.String)
+		if err == nil {
+			user.LockedUntil = &locked
+		}
+	}
+
+	if expireAt.Valid {
+		expire, err := time.Parse("2006-01-02 15:04:05", expireAt.String)
+		if err == nil {
+			user.ExpireAt = &expire
+		}
+	}
+
+	if createdAt.Valid {
+		user.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAt.String)
+	}
+
+	if updatedAt.Valid {
+		user.UpdatedAt, _ = time.Parse("2006-01-02 15:04:05", updatedAt.String)
+	}
+
+	return user, nil
+}
+
+// GetUserByUsername 根据用户名获取用户
+func (db *SQLiteDB) GetUserByUsername(username string) (*User, error) {
+	query := `SELECT id, username, email, password, salt, role, status, traffic_limit, traffic_used, 
+              last_login_at, login_attempts, locked_until, is_admin, expire_at, created_at, updated_at 
+              FROM users WHERE username = ?`
+
+	user := &User{}
+	var lastLoginAt, lockedUntil, expireAt, createdAt, updatedAt sql.NullString
+
+	err := db.db.QueryRow(query, username).Scan(
+		&user.ID, &user.Username, &user.Email, &user.Password, &user.Salt, &user.Role, &user.Status,
+		&user.TrafficLimit, &user.TrafficUsed, &lastLoginAt, &user.LoginAttempts, &lockedUntil,
+		&user.IsAdmin, &expireAt, &createdAt, &updatedAt,
+	)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil // 用户不存在
+		}
+		return nil, err
+	}
+
+	// 处理可空时间字段
+	if lastLoginAt.Valid {
+		lastLogin, err := time.Parse("2006-01-02 15:04:05", lastLoginAt.String)
+		if err == nil {
+			user.LastLoginAt = &lastLogin
+		}
+	}
+
+	if lockedUntil.Valid {
+		locked, err := time.Parse("2006-01-02 15:04:05", lockedUntil.String)
+		if err == nil {
+			user.LockedUntil = &locked
+		}
+	}
+
+	if expireAt.Valid {
+		expire, err := time.Parse("2006-01-02 15:04:05", expireAt.String)
+		if err == nil {
+			user.ExpireAt = &expire
+		}
+	}
+
+	if createdAt.Valid {
+		user.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAt.String)
+	}
+
+	if updatedAt.Valid {
+		user.UpdatedAt, _ = time.Parse("2006-01-02 15:04:05", updatedAt.String)
+	}
+
+	return user, nil
+}
+
+// ListAlertRecords 获取所有告警记录
+func (db *SQLiteDB) ListAlertRecords(out *[]*AlertRecord) error {
+	query := `SELECT id, type, value, threshold, message, created_at, updated_at 
+              FROM alert_records ORDER BY created_at DESC`
+
+	rows, err := db.db.Query(query)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		alert := &AlertRecord{}
+		var createdAt, updatedAt string
+
+		err := rows.Scan(
+			&alert.ID, &alert.Type, &alert.Value, &alert.Threshold, &alert.Message,
+			&createdAt, &updatedAt,
+		)
+		if err != nil {
+			return err
+		}
+
+		// 解析时间
+		alert.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAt)
+		alert.UpdatedAt, _ = time.Parse("2006-01-02 15:04:05", updatedAt)
+
+		*out = append(*out, alert)
+	}
+
+	return rows.Err()
+}
+
+// ListAlerts 分页获取告警记录
+func (db *SQLiteDB) ListAlerts(page, pageSize int) ([]*AlertRecord, error) {
+	offset := (page - 1) * pageSize
+	query := `SELECT id, type, value, threshold, message, created_at, updated_at 
+              FROM alert_records ORDER BY created_at DESC LIMIT ? OFFSET ?`
+
+	rows, err := db.db.Query(query, pageSize, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var alerts []*AlertRecord
+
+	for rows.Next() {
+		alert := &AlertRecord{}
+		var createdAt, updatedAt string
+
+		err := rows.Scan(
+			&alert.ID, &alert.Type, &alert.Value, &alert.Threshold, &alert.Message,
+			&createdAt, &updatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		// 解析时间
+		alert.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAt)
+		alert.UpdatedAt, _ = time.Parse("2006-01-02 15:04:05", updatedAt)
+
+		alerts = append(alerts, alert)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return alerts, nil
+}
+
+// ListBackups 获取所有备份记录
+func (db *SQLiteDB) ListBackups() ([]*Backup, error) {
+	query := `SELECT id, path, size, status, created_at, updated_at 
+              FROM backups ORDER BY created_at DESC`
+
+	rows, err := db.db.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var backups []*Backup
+
+	for rows.Next() {
+		backup := &Backup{}
+		var createdAt, updatedAt string
+
+		err := rows.Scan(
+			&backup.ID, &backup.Path, &backup.Size, &backup.Status,
+			&createdAt, &updatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		// 解析时间
+		backup.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAt)
+		backup.UpdatedAt, _ = time.Parse("2006-01-02 15:04:05", updatedAt)
+
+		backups = append(backups, backup)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return backups, nil
+}
+
+// ListCertificates 获取所有证书
+func (db *SQLiteDB) ListCertificates() ([]*Certificate, error) {
+	query := `SELECT id, domain, cert_file, key_file, status, last_checked_at, last_renewed_at, expires_at, created_at, updated_at 
+              FROM certificates ORDER BY expires_at ASC`
+
+	rows, err := db.db.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var certificates []*Certificate
+
+	for rows.Next() {
+		cert := &Certificate{}
+		var lastCheckedAt, lastRenewedAt, expiresAt, createdAt, updatedAt string
+
+		err := rows.Scan(
+			&cert.ID, &cert.Domain, &cert.CertFile, &cert.KeyFile, &cert.Status,
+			&lastCheckedAt, &lastRenewedAt, &expiresAt, &createdAt, &updatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		// 解析时间
+		cert.LastCheckedAt, _ = time.Parse("2006-01-02 15:04:05", lastCheckedAt)
+		cert.LastRenewedAt, _ = time.Parse("2006-01-02 15:04:05", lastRenewedAt)
+		cert.ExpiresAt, _ = time.Parse("2006-01-02 15:04:05", expiresAt)
+		cert.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAt)
+		cert.UpdatedAt, _ = time.Parse("2006-01-02 15:04:05", updatedAt)
+
+		certificates = append(certificates, cert)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return certificates, nil
+}
+
+// ListDailyStatsByUserID 获取用户的每日流量统计
+func (db *SQLiteDB) ListDailyStatsByUserID(userID int64) ([]*DailyStats, error) {
+	query := `SELECT id, user_id, date, upload, download, total, created_at, updated_at 
+              FROM daily_stats WHERE user_id = ? ORDER BY date DESC`
+
+	rows, err := db.db.Query(query, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var stats []*DailyStats
+
+	for rows.Next() {
+		stat := &DailyStats{}
+		var date, createdAt, updatedAt string
+
+		err := rows.Scan(
+			&stat.ID, &stat.UserID, &date, &stat.Upload, &stat.Download, &stat.Total,
+			&createdAt, &updatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		// 解析日期和时间
+		stat.Date, _ = time.Parse("2006-01-02", date)
+		stat.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAt)
+		stat.UpdatedAt, _ = time.Parse("2006-01-02 15:04:05", updatedAt)
+
+		stats = append(stats, stat)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return stats, nil
+}
+
+// ListTrafficHistoryByDateRange 根据日期范围获取用户的流量历史
+func (db *SQLiteDB) ListTrafficHistoryByDateRange(userID uint, startDate, endDate string, histories *[]*TrafficHistory) error {
+	query := `SELECT id, user_id, protocol, upload, download, date, created_at, updated_at 
+              FROM traffic_history 
+              WHERE user_id = ? AND date BETWEEN ? AND ? 
+              ORDER BY date ASC`
+
+	rows, err := db.db.Query(query, userID, startDate, endDate)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		history := &TrafficHistory{}
+		var date, createdAt, updatedAt string
+
+		err := rows.Scan(
+			&history.ID, &history.UserID, &history.Protocol, &history.Upload, &history.Download,
+			&date, &createdAt, &updatedAt,
+		)
+		if err != nil {
+			return err
+		}
+
+		// 日期可能已经是字符串格式，直接赋值
+		history.Date = date
+		history.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAt)
+		history.UpdatedAt, _ = time.Parse("2006-01-02 15:04:05", updatedAt)
+
+		*histories = append(*histories, history)
+	}
+
+	return rows.Err()
+}
+
+// ListUsers 分页获取用户列表
+func (db *SQLiteDB) ListUsers(page, pageSize int) ([]*User, error) {
+	offset := (page - 1) * pageSize
+	query := `SELECT id, username, email, password, salt, role, status, traffic_limit, traffic_used, 
+              last_login_at, login_attempts, locked_until, is_admin, expire_at, created_at, updated_at 
+              FROM users ORDER BY id DESC LIMIT ? OFFSET ?`
+
+	rows, err := db.db.Query(query, pageSize, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var users []*User
+	for rows.Next() {
+		user := &User{}
+		var lastLoginAt, lockedUntil, expireAt, createdAt, updatedAt sql.NullString
+
+		err := rows.Scan(
+			&user.ID, &user.Username, &user.Email, &user.Password, &user.Salt, &user.Role, &user.Status,
+			&user.TrafficLimit, &user.TrafficUsed, &lastLoginAt, &user.LoginAttempts, &lockedUntil,
+			&user.IsAdmin, &expireAt, &createdAt, &updatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		// 处理可空时间字段
+		if lastLoginAt.Valid {
+			lastLogin, err := time.Parse("2006-01-02 15:04:05", lastLoginAt.String)
+			if err == nil {
+				user.LastLoginAt = &lastLogin
+			}
+		}
+
+		if lockedUntil.Valid {
+			locked, err := time.Parse("2006-01-02 15:04:05", lockedUntil.String)
+			if err == nil {
+				user.LockedUntil = &locked
+			}
+		}
+
+		if expireAt.Valid {
+			expire, err := time.Parse("2006-01-02 15:04:05", expireAt.String)
+			if err == nil {
+				user.ExpireAt = &expire
+			}
+		}
+
+		if createdAt.Valid {
+			user.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAt.String)
+		}
+
+		if updatedAt.Valid {
+			user.UpdatedAt, _ = time.Parse("2006-01-02 15:04:05", updatedAt.String)
+		}
+
+		users = append(users, user)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return users, nil
+}
+
 // DeleteUser 删除用户
 func (db *SQLiteDB) DeleteUser(id int64) error {
 	query := `DELETE FROM users WHERE id = ?`
@@ -2201,4 +2691,171 @@ func (db *SQLiteDB) GetCertificate(domain string) (*Certificate, error) {
 	cert.UpdatedAt, _ = time.Parse("2006-01-02 15:04:05", updatedAtStr)
 
 	return cert, nil
+}
+
+// SearchUsers 根据关键词搜索用户
+func (db *SQLiteDB) SearchUsers(keyword string) ([]*User, error) {
+	// 使用LIKE进行简单搜索，匹配用户名和邮箱
+	query := `SELECT id, username, email, password, salt, role, status, traffic_limit, traffic_used, 
+              last_login_at, login_attempts, locked_until, is_admin, expire_at, created_at, updated_at 
+              FROM users 
+              WHERE username LIKE ? OR email LIKE ? OR role LIKE ? OR status LIKE ?
+              ORDER BY id DESC`
+
+	// 构造模糊查询参数
+	likeParam := "%" + keyword + "%"
+	rows, err := db.db.Query(query, likeParam, likeParam, likeParam, likeParam)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var users []*User
+	for rows.Next() {
+		user := &User{}
+		var lastLoginAt, lockedUntil, expireAt, createdAt, updatedAt sql.NullString
+
+		err := rows.Scan(
+			&user.ID, &user.Username, &user.Email, &user.Password, &user.Salt, &user.Role, &user.Status,
+			&user.TrafficLimit, &user.TrafficUsed, &lastLoginAt, &user.LoginAttempts, &lockedUntil,
+			&user.IsAdmin, &expireAt, &createdAt, &updatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		// 处理可空时间字段
+		if lastLoginAt.Valid {
+			lastLogin, err := time.Parse("2006-01-02 15:04:05", lastLoginAt.String)
+			if err == nil {
+				user.LastLoginAt = &lastLogin
+			}
+		}
+
+		if lockedUntil.Valid {
+			locked, err := time.Parse("2006-01-02 15:04:05", lockedUntil.String)
+			if err == nil {
+				user.LockedUntil = &locked
+			}
+		}
+
+		if expireAt.Valid {
+			expire, err := time.Parse("2006-01-02 15:04:05", expireAt.String)
+			if err == nil {
+				user.ExpireAt = &expire
+			}
+		}
+
+		if createdAt.Valid {
+			user.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAt.String)
+		}
+
+		if updatedAt.Valid {
+			user.UpdatedAt, _ = time.Parse("2006-01-02 15:04:05", updatedAt.String)
+		}
+
+		users = append(users, user)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return users, nil
+}
+
+// UpdateBackup 更新备份记录
+func (db *SQLiteDB) UpdateBackup(backup *Backup) error {
+	now := time.Now().Format("2006-01-02 15:04:05")
+
+	query := `UPDATE backups SET
+		path = ?, size = ?, status = ?, updated_at = ?
+	WHERE id = ?`
+
+	_, err := db.db.Exec(
+		query,
+		backup.Path,
+		backup.Size,
+		backup.Status,
+		now,
+		backup.ID,
+	)
+
+	return err
+}
+
+// UpdateCertificate 更新证书记录
+func (db *SQLiteDB) UpdateCertificate(cert *Certificate) error {
+	now := time.Now().Format("2006-01-02 15:04:05")
+
+	query := `UPDATE certificates SET
+		domain = ?, cert_file = ?, key_file = ?, status = ?,
+		last_checked_at = ?, last_renewed_at = ?, expires_at = ?, updated_at = ?
+	WHERE id = ?`
+
+	_, err := db.db.Exec(
+		query,
+		cert.Domain,
+		cert.CertFile,
+		cert.KeyFile,
+		cert.Status,
+		cert.LastCheckedAt.Format("2006-01-02 15:04:05"),
+		cert.LastRenewedAt.Format("2006-01-02 15:04:05"),
+		cert.ExpiresAt.Format("2006-01-02 15:04:05"),
+		now,
+		cert.ID,
+	)
+
+	return err
+}
+
+// UpdateUser 更新用户信息
+func (db *SQLiteDB) UpdateUser(user *User) error {
+	now := time.Now().Format("2006-01-02 15:04:05")
+
+	// 处理可能为空的时间字段
+	var lastLoginAtStr, lockedUntilStr, expireAtStr string
+	if user.LastLoginAt != nil {
+		lastLoginAtStr = user.LastLoginAt.Format("2006-01-02 15:04:05")
+	}
+	if user.LockedUntil != nil {
+		lockedUntilStr = user.LockedUntil.Format("2006-01-02 15:04:05")
+	}
+	if user.ExpireAt != nil {
+		expireAtStr = user.ExpireAt.Format("2006-01-02 15:04:05")
+	}
+
+	query := `UPDATE users SET
+		username = ?, email = ?, password = ?, salt = ?, role = ?, status = ?,
+		traffic_limit = ?, traffic_used = ?, last_login_at = ?, login_attempts = ?,
+		locked_until = ?, is_admin = ?, expire_at = ?, updated_at = ?
+	WHERE id = ?`
+
+	_, err := db.db.Exec(
+		query,
+		user.Username,
+		user.Email,
+		user.Password,
+		user.Salt,
+		user.Role,
+		user.Status,
+		user.TrafficLimit,
+		user.TrafficUsed,
+		lastLoginAtStr,
+		user.LoginAttempts,
+		lockedUntilStr,
+		boolToInt(user.IsAdmin),
+		expireAtStr,
+		now,
+		user.ID,
+	)
+
+	return err
+}
+
+// GetTotalProtocols 获取协议总数
+func (db *SQLiteDB) GetTotalProtocols() (int64, error) {
+	var count int64
+	err := db.db.QueryRow("SELECT COUNT(*) FROM protocols").Scan(&count)
+	return count, err
 }

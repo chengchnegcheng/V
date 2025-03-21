@@ -4,7 +4,7 @@ import (
 	"net/http"
 
 	"v/logger"
-	"v/settings"
+	stg "v/settings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -12,11 +12,11 @@ import (
 // SettingsHandler 系统设置API处理器
 type SettingsHandler struct {
 	log      *logger.Logger
-	settings *settings.Manager
+	settings *stg.Manager
 }
 
 // NewSettingsHandler 创建系统设置处理器
-func NewSettingsHandler(log *logger.Logger, settings *settings.Manager) *SettingsHandler {
+func NewSettingsHandler(log *logger.Logger, settings *stg.Manager) *SettingsHandler {
 	return &SettingsHandler{
 		log:      log,
 		settings: settings,
@@ -47,7 +47,7 @@ func (h *SettingsHandler) GetSettings(c *gin.Context) {
 
 // UpdateSettings 更新所有设置
 func (h *SettingsHandler) UpdateSettings(c *gin.Context) {
-	var settings settings.Settings
+	var settings stg.Settings
 	if err := c.ShouldBindJSON(&settings); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,
@@ -57,7 +57,7 @@ func (h *SettingsHandler) UpdateSettings(c *gin.Context) {
 		return
 	}
 
-	if err := h.settings.Update(settings); err != nil {
+	if err := h.settings.Update(&settings); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
 			"message": "更新设置失败",
@@ -114,7 +114,7 @@ func (h *SettingsHandler) UpdateSectionSettings(c *gin.Context) {
 
 	switch section {
 	case "site":
-		var siteSettings settings.SiteSettings
+		var siteSettings stg.SiteSettings
 		if err := c.ShouldBindJSON(&siteSettings); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{
 				"success": false,
@@ -125,7 +125,7 @@ func (h *SettingsHandler) UpdateSectionSettings(c *gin.Context) {
 		}
 		settings.Site = siteSettings
 	case "admin":
-		var adminSettings settings.AdminSettings
+		var adminSettings stg.AdminSettings
 		if err := c.ShouldBindJSON(&adminSettings); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{
 				"success": false,
@@ -136,7 +136,7 @@ func (h *SettingsHandler) UpdateSectionSettings(c *gin.Context) {
 		}
 		settings.Admin = adminSettings
 	case "ssl":
-		var sslSettings settings.SSLSettings
+		var sslSettings stg.SSLSettings
 		if err := c.ShouldBindJSON(&sslSettings); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{
 				"success": false,
@@ -147,7 +147,7 @@ func (h *SettingsHandler) UpdateSectionSettings(c *gin.Context) {
 		}
 		settings.SSL = sslSettings
 	case "notification":
-		var notificationSettings settings.NotificationSettings
+		var notificationSettings stg.NotificationSettings
 		if err := c.ShouldBindJSON(&notificationSettings); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{
 				"success": false,
@@ -158,7 +158,7 @@ func (h *SettingsHandler) UpdateSectionSettings(c *gin.Context) {
 		}
 		settings.Notification = notificationSettings
 	case "monitor":
-		var monitorSettings settings.MonitorSettings
+		var monitorSettings stg.MonitorSettings
 		if err := c.ShouldBindJSON(&monitorSettings); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{
 				"success": false,
@@ -169,7 +169,7 @@ func (h *SettingsHandler) UpdateSectionSettings(c *gin.Context) {
 		}
 		settings.Monitor = monitorSettings
 	case "traffic":
-		var trafficSettings settings.TrafficSettings
+		var trafficSettings stg.TrafficSettings
 		if err := c.ShouldBindJSON(&trafficSettings); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{
 				"success": false,
@@ -180,7 +180,7 @@ func (h *SettingsHandler) UpdateSectionSettings(c *gin.Context) {
 		}
 		settings.Traffic = trafficSettings
 	case "log":
-		var logSettings settings.LogSettings
+		var logSettings stg.LogSettings
 		if err := c.ShouldBindJSON(&logSettings); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{
 				"success": false,

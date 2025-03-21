@@ -14,107 +14,137 @@ import (
 	"v/logger"
 )
 
+// SiteSettings represents site settings
+type SiteSettings struct {
+	Name            string `json:"name" env:"SITE_NAME"`
+	Description     string `json:"description" env:"SITE_DESCRIPTION"`
+	AllowRegister   bool   `json:"allow_register" env:"SITE_ALLOW_REGISTER"`
+	MaintenanceMode bool   `json:"maintenance_mode" env:"SITE_MAINTENANCE_MODE"`
+}
+
+// TrafficSettings represents traffic settings
+type TrafficSettings struct {
+	DefaultLimit      int64         `json:"default_limit" env:"TRAFFIC_DEFAULT_LIMIT"`
+	StatsInterval     time.Duration `json:"stats_interval" env:"TRAFFIC_STATS_INTERVAL"`
+	WarningPercent    int           `json:"warning_percent" env:"TRAFFIC_WARNING_PERCENT"`
+	AccountExpireDays int           `json:"account_expire_days" env:"TRAFFIC_ACCOUNT_EXPIRE_DAYS"`
+}
+
+// SSLSettings represents SSL settings
+type SSLSettings struct {
+	AutoRenew         bool          `json:"auto_renew" env:"SSL_AUTO_RENEW"`
+	RenewDays         int           `json:"renew_days" env:"SSL_RENEW_DAYS"`
+	Provider          string        `json:"provider" env:"SSL_PROVIDER"`
+	Email             string        `json:"email" env:"SSL_EMAIL"`
+	CertDir           string        `json:"cert_dir" env:"SSL_CERT_DIR"`
+	AcmeURL           string        `json:"acme_url" env:"SSL_ACME_URL"`
+	ChallengeType     string        `json:"challenge_type" env:"SSL_CHALLENGE_TYPE"`
+	CheckInterval     time.Duration `json:"check_interval" env:"SSL_CHECK_INTERVAL"`
+	RenewInterval     time.Duration `json:"renew_interval" env:"SSL_RENEW_INTERVAL"`
+	ExpiryWarningDays time.Duration `json:"expiry_warning_days" env:"SSL_EXPIRY_WARNING_DAYS"`
+	RenewBeforeDays   time.Duration `json:"renew_before_days" env:"SSL_RENEW_BEFORE_DAYS"`
+}
+
+// ProxySettings represents proxy settings
+type ProxySettings struct {
+	DefaultPort    int      `json:"default_port" env:"PROXY_DEFAULT_PORT"`
+	AllowedIPs     []string `json:"allowed_ips" env:"PROXY_ALLOWED_IPS"`
+	BlockedIPs     []string `json:"blocked_ips" env:"PROXY_BLOCKED_IPS"`
+	MaxConnections int      `json:"max_connections" env:"PROXY_MAX_CONNECTIONS"`
+}
+
+// SecuritySettings represents security settings
+type SecuritySettings struct {
+	JWTSecret         string        `json:"jwt_secret" env:"SECURITY_JWT_SECRET"`
+	TokenExpiry       time.Duration `json:"token_expiry" env:"SECURITY_TOKEN_EXPIRY"`
+	MinPasswordLength int           `json:"min_password_length" env:"SECURITY_MIN_PASSWORD_LENGTH"`
+	LoginAttempts     int           `json:"login_attempts" env:"SECURITY_LOGIN_ATTEMPTS"`
+	LockoutTime       time.Duration `json:"lockout_time" env:"SECURITY_LOCKOUT_TIME"`
+}
+
+// NotificationSettings represents notification settings
+type NotificationSettings struct {
+	EnableEmail  bool   `json:"enable_email" env:"NOTIFICATION_ENABLE_EMAIL"`
+	SMTPHost     string `json:"smtp_host" env:"NOTIFICATION_SMTP_HOST"`
+	SMTPPort     int    `json:"smtp_port" env:"NOTIFICATION_SMTP_PORT"`
+	SMTPUser     string `json:"smtp_user" env:"NOTIFICATION_SMTP_USER"`
+	SMTPPassword string `json:"smtp_password" env:"NOTIFICATION_SMTP_PASSWORD"`
+	FromEmail    string `json:"from_email" env:"NOTIFICATION_FROM_EMAIL"`
+	FromName     string `json:"from_name" env:"NOTIFICATION_FROM_NAME"`
+}
+
+// BackupSettings represents backup settings
+type BackupSettings struct {
+	Enable      bool          `json:"enable" env:"BACKUP_ENABLE"`
+	Interval    time.Duration `json:"interval" env:"BACKUP_INTERVAL"`
+	Retention   int           `json:"retention" env:"BACKUP_RETENTION"`
+	Path        string        `json:"path" env:"BACKUP_PATH"`
+	Compression bool          `json:"compression" env:"BACKUP_COMPRESSION"`
+}
+
+// MonitorSettings represents monitor settings
+type MonitorSettings struct {
+	Interval          time.Duration `json:"interval" env:"MONITOR_INTERVAL"`
+	CPUThreshold      float64       `json:"cpu_threshold" env:"MONITOR_CPU_THRESHOLD"`
+	MemoryThreshold   float64       `json:"memory_threshold" env:"MONITOR_MEMORY_THRESHOLD"`
+	DiskThreshold     float64       `json:"disk_threshold" env:"MONITOR_DISK_THRESHOLD"`
+	EnableCPUAlert    bool          `json:"enable_cpu_alert" env:"MONITOR_ENABLE_CPU_ALERT"`
+	EnableMemoryAlert bool          `json:"enable_memory_alert" env:"MONITOR_ENABLE_MEMORY_ALERT"`
+	EnableDiskAlert   bool          `json:"enable_disk_alert" env:"MONITOR_ENABLE_DISK_ALERT"`
+	AlertInterval     int           `json:"alert_interval" env:"MONITOR_ALERT_INTERVAL"`
+}
+
+// LogSettings represents log settings
+type LogSettings struct {
+	Level         string        `json:"level" env:"LOG_LEVEL"`
+	ConsoleLog    bool          `json:"console_log" env:"LOG_CONSOLE_LOG"`
+	FileLog       bool          `json:"file_log" env:"LOG_FILE_LOG"`
+	FilePath      string        `json:"file_path" env:"LOG_FILE_PATH"`
+	MaxSize       int           `json:"max_size" env:"LOG_MAX_SIZE"`
+	MaxAge        int           `json:"max_age" env:"LOG_MAX_AGE"`
+	MaxBackups    int           `json:"max_backups" env:"LOG_MAX_BACKUPS"`
+	Compress      bool          `json:"compress" env:"LOG_COMPRESS"`
+	ErrorFilePath string        `json:"error_file_path" env:"LOG_ERROR_FILE_PATH"`
+	SeparateError bool          `json:"separate_error" env:"LOG_SEPARATE_ERROR"`
+	RotateTime    time.Duration `json:"rotate_time" env:"LOG_ROTATE_TIME"`
+}
+
+// AdminSettings represents admin settings
+type AdminSettings struct {
+	Email string `json:"email" env:"ADMIN_EMAIL"`
+}
+
 // Settings represents system settings
 type Settings struct {
 	// Site settings
-	Site struct {
-		Name            string `json:"name" env:"SITE_NAME"`
-		Description     string `json:"description" env:"SITE_DESCRIPTION"`
-		AllowRegister   bool   `json:"allow_register" env:"SITE_ALLOW_REGISTER"`
-		MaintenanceMode bool   `json:"maintenance_mode" env:"SITE_MAINTENANCE_MODE"`
-	} `json:"site"`
+	Site SiteSettings `json:"site"`
 
 	// Traffic settings
-	Traffic struct {
-		DefaultLimit      int64         `json:"default_limit" env:"TRAFFIC_DEFAULT_LIMIT"`
-		StatsInterval     time.Duration `json:"stats_interval" env:"TRAFFIC_STATS_INTERVAL"`
-		WarningPercent    int           `json:"warning_percent" env:"TRAFFIC_WARNING_PERCENT"`
-		AccountExpireDays int           `json:"account_expire_days" env:"TRAFFIC_ACCOUNT_EXPIRE_DAYS"`
-	} `json:"traffic"`
+	Traffic TrafficSettings `json:"traffic"`
 
 	// SSL settings
-	SSL struct {
-		AutoRenew         bool          `json:"auto_renew" env:"SSL_AUTO_RENEW"`
-		RenewDays         int           `json:"renew_days" env:"SSL_RENEW_DAYS"`
-		Provider          string        `json:"provider" env:"SSL_PROVIDER"`
-		Email             string        `json:"email" env:"SSL_EMAIL"`
-		CertDir           string        `json:"cert_dir" env:"SSL_CERT_DIR"`
-		AcmeURL           string        `json:"acme_url" env:"SSL_ACME_URL"`
-		ChallengeType     string        `json:"challenge_type" env:"SSL_CHALLENGE_TYPE"`
-		CheckInterval     time.Duration `json:"check_interval" env:"SSL_CHECK_INTERVAL"`
-		RenewInterval     time.Duration `json:"renew_interval" env:"SSL_RENEW_INTERVAL"`
-		ExpiryWarningDays time.Duration `json:"expiry_warning_days" env:"SSL_EXPIRY_WARNING_DAYS"`
-		RenewBeforeDays   time.Duration `json:"renew_before_days" env:"SSL_RENEW_BEFORE_DAYS"`
-	} `json:"ssl"`
+	SSL SSLSettings `json:"ssl"`
 
 	// Proxy settings
-	Proxy struct {
-		DefaultPort    int      `json:"default_port" env:"PROXY_DEFAULT_PORT"`
-		AllowedIPs     []string `json:"allowed_ips" env:"PROXY_ALLOWED_IPS"`
-		BlockedIPs     []string `json:"blocked_ips" env:"PROXY_BLOCKED_IPS"`
-		MaxConnections int      `json:"max_connections" env:"PROXY_MAX_CONNECTIONS"`
-	} `json:"proxy"`
+	Proxy ProxySettings `json:"proxy"`
 
 	// Security settings
-	Security struct {
-		JWTSecret         string        `json:"jwt_secret" env:"SECURITY_JWT_SECRET"`
-		TokenExpiry       time.Duration `json:"token_expiry" env:"SECURITY_TOKEN_EXPIRY"`
-		MinPasswordLength int           `json:"min_password_length" env:"SECURITY_MIN_PASSWORD_LENGTH"`
-		LoginAttempts     int           `json:"login_attempts" env:"SECURITY_LOGIN_ATTEMPTS"`
-		LockoutTime       time.Duration `json:"lockout_time" env:"SECURITY_LOCKOUT_TIME"`
-	} `json:"security"`
+	Security SecuritySettings `json:"security"`
 
 	// Notification settings
-	Notification struct {
-		EnableEmail  bool   `json:"enable_email" env:"NOTIFICATION_ENABLE_EMAIL"`
-		SMTPHost     string `json:"smtp_host" env:"NOTIFICATION_SMTP_HOST"`
-		SMTPPort     int    `json:"smtp_port" env:"NOTIFICATION_SMTP_PORT"`
-		SMTPUser     string `json:"smtp_user" env:"NOTIFICATION_SMTP_USER"`
-		SMTPPassword string `json:"smtp_password" env:"NOTIFICATION_SMTP_PASSWORD"`
-		FromEmail    string `json:"from_email" env:"NOTIFICATION_FROM_EMAIL"`
-		FromName     string `json:"from_name" env:"NOTIFICATION_FROM_NAME"`
-	} `json:"notification"`
+	Notification NotificationSettings `json:"notification"`
 
 	// Backup settings
-	Backup struct {
-		Enable      bool          `json:"enable" env:"BACKUP_ENABLE"`
-		Interval    time.Duration `json:"interval" env:"BACKUP_INTERVAL"`
-		Retention   int           `json:"retention" env:"BACKUP_RETENTION"`
-		Path        string        `json:"path" env:"BACKUP_PATH"`
-		Compression bool          `json:"compression" env:"BACKUP_COMPRESSION"`
-	} `json:"backup"`
+	Backup BackupSettings `json:"backup"`
 
 	// Monitor settings
-	Monitor struct {
-		Interval          time.Duration `json:"interval" env:"MONITOR_INTERVAL"`
-		CPUThreshold      float64       `json:"cpu_threshold" env:"MONITOR_CPU_THRESHOLD"`
-		MemoryThreshold   float64       `json:"memory_threshold" env:"MONITOR_MEMORY_THRESHOLD"`
-		DiskThreshold     float64       `json:"disk_threshold" env:"MONITOR_DISK_THRESHOLD"`
-		EnableCPUAlert    bool          `json:"enable_cpu_alert" env:"MONITOR_ENABLE_CPU_ALERT"`
-		EnableMemoryAlert bool          `json:"enable_memory_alert" env:"MONITOR_ENABLE_MEMORY_ALERT"`
-		EnableDiskAlert   bool          `json:"enable_disk_alert" env:"MONITOR_ENABLE_DISK_ALERT"`
-		AlertInterval     int           `json:"alert_interval" env:"MONITOR_ALERT_INTERVAL"`
-	} `json:"monitor"`
+	Monitor MonitorSettings `json:"monitor"`
 
 	// Log settings
-	Log struct {
-		Level         string        `json:"level" env:"LOG_LEVEL"`
-		ConsoleLog    bool          `json:"console_log" env:"LOG_CONSOLE_LOG"`
-		FileLog       bool          `json:"file_log" env:"LOG_FILE_LOG"`
-		FilePath      string        `json:"file_path" env:"LOG_FILE_PATH"`
-		MaxSize       int           `json:"max_size" env:"LOG_MAX_SIZE"`
-		MaxAge        int           `json:"max_age" env:"LOG_MAX_AGE"`
-		MaxBackups    int           `json:"max_backups" env:"LOG_MAX_BACKUPS"`
-		Compress      bool          `json:"compress" env:"LOG_COMPRESS"`
-		ErrorFilePath string        `json:"error_file_path" env:"LOG_ERROR_FILE_PATH"`
-		SeparateError bool          `json:"separate_error" env:"LOG_SEPARATE_ERROR"`
-		RotateTime    time.Duration `json:"rotate_time" env:"LOG_ROTATE_TIME"`
-	} `json:"log"`
+	Log LogSettings `json:"log"`
 
 	// Admin settings
-	Admin struct {
-		Email string `json:"email" env:"ADMIN_EMAIL"`
-	} `json:"admin"`
+	Admin AdminSettings `json:"admin"`
 }
 
 // Manager represents a settings manager
@@ -467,4 +497,66 @@ func (m *Manager) SetBool(path string, value bool) error {
 	}
 
 	return fmt.Errorf("invalid setting path: %s", path)
+}
+
+// Backup 备份设置到文件
+func (m *Manager) Backup() (string, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	// 创建备份目录
+	backupDir := filepath.Join("backups", "settings")
+	if err := os.MkdirAll(backupDir, 0755); err != nil {
+		return "", fmt.Errorf("failed to create backup directory: %v", err)
+	}
+
+	// 创建带时间戳的备份文件名
+	timestamp := time.Now().Format("20060102_150405")
+	backupPath := filepath.Join(backupDir, fmt.Sprintf("settings_%s.json", timestamp))
+
+	// 序列化设置
+	data, err := json.MarshalIndent(m.settings, "", "  ")
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal settings: %v", err)
+	}
+
+	// 写入备份文件
+	if err := os.WriteFile(backupPath, data, 0644); err != nil {
+		return "", fmt.Errorf("failed to write backup file: %v", err)
+	}
+
+	return backupPath, nil
+}
+
+// Restore 从备份文件恢复设置
+func (m *Manager) Restore(backupPath string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	// 检查备份文件是否存在
+	if _, err := os.Stat(backupPath); os.IsNotExist(err) {
+		return fmt.Errorf("backup file does not exist: %s", backupPath)
+	}
+
+	// 读取备份文件
+	data, err := os.ReadFile(backupPath)
+	if err != nil {
+		return fmt.Errorf("failed to read backup file: %v", err)
+	}
+
+	// 反序列化设置
+	var settings Settings
+	if err := json.Unmarshal(data, &settings); err != nil {
+		return fmt.Errorf("failed to unmarshal settings: %v", err)
+	}
+
+	// 更新当前设置
+	m.settings = &settings
+
+	// 保存设置
+	if err := m.Save(); err != nil {
+		return fmt.Errorf("failed to save settings: %v", err)
+	}
+
+	return nil
 }

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"flag"
 	"fmt"
 	"os"
@@ -169,15 +170,25 @@ func initDatabase() (model.DB, error) {
 	}
 
 	dbPath := filepath.Join("data", "v.db")
-	db, err := model.NewSQLiteDB(dbPath)
+	// 打开数据库
+	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("打开数据库失败: %v", err)
 	}
+
+	// 测试连接
+	if err := db.Ping(); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("数据库连接测试失败: %v", err)
+	}
+
+	// 初始化数据库
+	sqliteDB := model.NewSQLiteDB(db, slog.Default())
 
 	// 自动迁移
-	if err := db.AutoMigrate(); err != nil {
+	if err := sqliteDB.AutoMigrate(); err != nil {
 		return nil, err
 	}
 
-	return db, nil
+	return sqliteDB, nil
 }

@@ -10,11 +10,11 @@ import (
 
 // CertificateHandler SSL证书处理器
 type CertificateHandler struct {
-	certManager *cert.Manager
+	certManager *cert.CertManager
 }
 
 // NewCertificateHandler 创建SSL证书处理器
-func NewCertificateHandler(certManager *cert.Manager) *CertificateHandler {
+func NewCertificateHandler(certManager *cert.CertManager) *CertificateHandler {
 	return &CertificateHandler{
 		certManager: certManager,
 	}
@@ -93,7 +93,7 @@ func (h *CertificateHandler) CreateCertificate(c *gin.Context) {
 // DeleteCertificate 删除证书
 func (h *CertificateHandler) DeleteCertificate(c *gin.Context) {
 	domain := c.Param("domain")
-	if err := h.certManager.DeleteCertificate(domain); err != nil {
+	if err := h.certManager.DeleteACMECertificate(domain); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
 			"message": err.Error(),
@@ -110,7 +110,7 @@ func (h *CertificateHandler) DeleteCertificate(c *gin.Context) {
 // RenewCertificate 更新证书
 func (h *CertificateHandler) RenewCertificate(c *gin.Context) {
 	domain := c.Param("domain")
-	cert, err := h.certManager.GetCertificate(domain)
+	_, err := h.certManager.GetCertificate(domain)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{
 			"success": false,
@@ -119,7 +119,7 @@ func (h *CertificateHandler) RenewCertificate(c *gin.Context) {
 		return
 	}
 
-	if err := h.certManager.renewCertificate(domain, cert); err != nil {
+	if err := h.certManager.RenewCertificate(domain); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
 			"message": err.Error(),
