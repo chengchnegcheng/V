@@ -1,0 +1,14 @@
+{
+    "server": {
+        "port": 8080,
+        "address": "0.0.0.0"
+    },
+    "database": {
+        "type": "sqlite3",
+        "path": "database/v.db"
+    },
+    "log": {
+        "level": "info",
+        "file": "logger/v.log"
+    }
+} 

@@ -1,0 +1,166 @@
+<template>
+  <el-container class="layout-container">
+    <el-aside :width="isCollapse ? '64px' : '200px'" class="aside">
+      <div class="logo">
+        <img src="@/assets/logo.png" alt="Logo" />
+        <span v-show="!isCollapse">V Panel</span>
+      </div>
+      <el-menu
+        :default-active="activeMenu"
+        class="menu"
+        :collapse="isCollapse"
+        router
+      >
+        <el-menu-item index="/">
+          <el-icon><Monitor /></el-icon>
+          <template #title>仪表盘</template>
+        </el-menu-item>
+        <el-menu-item index="/users">
+          <el-icon><User /></el-icon>
+          <template #title>用户管理</template>
+        </el-menu-item>
+        <el-menu-item index="/proxies">
+          <el-icon><Connection /></el-icon>
+          <template #title>代理管理</template>
+        </el-menu-item>
+        <el-menu-item index="/certificates">
+          <el-icon><Lock /></el-icon>
+          <template #title>证书管理</template>
+        </el-menu-item>
+        <el-menu-item index="/settings">
+          <el-icon><Setting /></el-icon>
+          <template #title>系统设置</template>
+        </el-menu-item>
+      </el-menu>
+    </el-aside>
+    <el-container>
+      <el-header class="header">
+        <div class="header-left">
+          <el-button
+            type="text"
+            @click="toggleCollapse"
+            class="collapse-btn"
+          >
+            <el-icon>
+              <component :is="isCollapse ? 'Expand' : 'Fold'" />
+            </el-icon>
+          </el-button>
+        </div>
+        <div class="header-right">
+          <el-dropdown @command="handleCommand">
+            <span class="user-dropdown">
+              {{ userStore.username }}
+              <el-icon><ArrowDown /></el-icon>
+            </span>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="profile">个人信息</el-dropdown-item>
+                <el-dropdown-item command="logout">退出登录</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+        </div>
+      </el-header>
+      <el-main>
+        <router-view />
+      </el-main>
+    </el-container>
+  </el-container>
+</template>
+
+<script setup>
+import { ref, computed } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
+import { useUserStore } from '@/stores/user'
+import {
+  Monitor,
+  User,
+  Connection,
+  Lock,
+  Setting,
+  Expand,
+  Fold,
+  ArrowDown
+} from '@element-plus/icons-vue'
+
+const router = useRouter()
+const route = useRoute()
+const userStore = useUserStore()
+const isCollapse = ref(false)
+const activeMenu = computed(() => route.path)
+
+const toggleCollapse = () => {
+  isCollapse.value = !isCollapse.value
+}
+
+const handleCommand = async (command) => {
+  if (command === 'profile') {
+    router.push('/profile')
+  } else if (command === 'logout') {
+    await userStore.logout()
+    router.push('/login')
+  }
+}
+</script>
+
+<style scoped>
+.layout-container {
+  height: 100vh;
+}
+
+.aside {
+  background-color: #304156;
+  transition: width 0.3s;
+  overflow: hidden;
+}
+
+.logo {
+  height: 60px;
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  color: #fff;
+  font-size: 18px;
+  font-weight: bold;
+}
+
+.logo img {
+  width: 32px;
+  height: 32px;
+  margin-right: 12px;
+}
+
+.menu {
+  border-right: none;
+}
+
+.header {
+  background-color: #fff;
+  border-bottom: 1px solid #dcdfe6;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+}
+
+.collapse-btn {
+  font-size: 20px;
+  cursor: pointer;
+}
+
+.user-dropdown {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  color: #606266;
+}
+
+.user-dropdown .el-icon {
+  margin-left: 4px;
+}
+
+.el-main {
+  background-color: #f0f2f5;
+  padding: 20px;
+}
+</style> 

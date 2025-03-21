@@ -1,0 +1,2843 @@
+package model
+
+import (
+	"database/sql"
+	"fmt"
+	"log/slog"
+	"time"
+	"v/common"
+
+	_ "github.com/mattn/go-sqlite3"
+)
+
+// SQLiteDB SQLite数据库实现
+type SQLiteDB struct {
+	db     *sql.DB
+	tx     *sql.Tx
+	logger *slog.Logger
+}
+
+// NewSQLiteDB 创建SQLite数据库连接
+func NewSQLiteDB(path string) (DB, error) {
+	db, err := sql.Open("sqlite3", path)
+	if err != nil {
+		return nil, fmt.Errorf("打开数据库失败: %v", err)
+	}
+
+	if err := db.Ping(); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("连接数据库失败: %v", err)
+	}
+
+	_, err = db.Exec(`PRAGMA foreign_keys = ON;`)
+	if err != nil {
+		db.Close()
+		return nil, fmt.Errorf("设置外键约束失败: %v", err)
+	}
+
+	return &SQLiteDB{db: db}, nil
+}
+
+// AutoMigrate 自动迁移数据库表
+func (db *SQLiteDB) AutoMigrate() error {
+	tables := []string{
+		// 用户表
+		`CREATE TABLE IF NOT EXISTS users (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			username TEXT NOT NULL UNIQUE,
+			email TEXT NOT NULL UNIQUE,
+			password TEXT NOT NULL,
+			role TEXT NOT NULL DEFAULT 'user',
+			status TEXT NOT NULL DEFAULT 'active',
+			expire_at TIMESTAMP,
+			traffic_limit INTEGER DEFAULT 0,
+			created_at TIMESTAMP NOT NULL,
+			updated_at TIMESTAMP NOT NULL
+		)`,
+
+		// 代理表
+		`CREATE TABLE IF NOT EXISTS proxies (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			user_id INTEGER NOT NULL,
+			protocol TEXT NOT NULL,
+			port INTEGER NOT NULL,
+			settings TEXT,
+			enabled INTEGER NOT NULL DEFAULT 1,
+			created_at TIMESTAMP NOT NULL,
+			updated_at TIMESTAMP NOT NULL,
+			FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+		)`,
+
+		// 流量统计表
+		`CREATE TABLE IF NOT EXISTS traffic_stats (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			user_id INTEGER NOT NULL,
+			proxy_id INTEGER NOT NULL,
+			up INTEGER NOT NULL DEFAULT 0,
+			down INTEGER NOT NULL DEFAULT 0,
+			date DATE NOT NULL,
+			created_at TIMESTAMP NOT NULL,
+			updated_at TIMESTAMP NOT NULL,
+			FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+			FOREIGN KEY(proxy_id) REFERENCES proxies(id) ON DELETE CASCADE
+		)`,
+
+		// 日志表
+		`CREATE TABLE IF NOT EXISTS logs (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			level TEXT NOT NULL,
+			module TEXT NOT NULL,
+			message TEXT NOT NULL,
+			details TEXT,
+			ip TEXT,
+			user_agent TEXT,
+			user_id INTEGER,
+			username TEXT,
+			created_at TIMESTAMP NOT NULL,
+			updated_at TIMESTAMP NOT NULL
+		)`,
+
+		// 备份表
+		`CREATE TABLE IF NOT EXISTS backups (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			filename TEXT NOT NULL,
+			path TEXT NOT NULL,
+			size INTEGER NOT NULL,
+			status TEXT NOT NULL,
+			timestamp TIMESTAMP NOT NULL,
+			created_at TIMESTAMP NOT NULL,
+			updated_at TIMESTAMP NOT NULL
+		)`,
+
+		// 协议表
+		`CREATE TABLE IF NOT EXISTS protocols (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			name TEXT NOT NULL,
+			type TEXT NOT NULL,
+			settings TEXT,
+			created_at TIMESTAMP NOT NULL,
+			updated_at TIMESTAMP NOT NULL
+		)`,
+
+		// 协议统计表
+		`CREATE TABLE IF NOT EXISTS protocol_stats (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			protocol_id INTEGER NOT NULL,
+			connections INTEGER NOT NULL DEFAULT 0,
+			traffic_up INTEGER NOT NULL DEFAULT 0,
+			traffic_down INTEGER NOT NULL DEFAULT 0,
+			date DATE NOT NULL,
+			created_at TIMESTAMP NOT NULL,
+			updated_at TIMESTAMP NOT NULL,
+			FOREIGN KEY(protocol_id) REFERENCES protocols(id) ON DELETE CASCADE
+		)`,
+
+		// 证书表
+		`CREATE TABLE IF NOT EXISTS certificates (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			domain TEXT NOT NULL UNIQUE,
+			cert_file TEXT NOT NULL,
+			key_file TEXT NOT NULL,
+			status TEXT NOT NULL,
+			last_checked_at TIMESTAMP NOT NULL,
+			last_renewed_at TIMESTAMP NOT NULL,
+			expires_at TIMESTAMP NOT NULL,
+			created_at TIMESTAMP NOT NULL,
+			updated_at TIMESTAMP NOT NULL
+		)`,
+
+		// 每日流量统计表
+		`CREATE TABLE IF NOT EXISTS daily_stats (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			user_id INTEGER NOT NULL,
+			up INTEGER NOT NULL DEFAULT 0,
+			down INTEGER NOT NULL DEFAULT 0,
+			date DATE NOT NULL UNIQUE,
+			created_at TIMESTAMP NOT NULL,
+			updated_at TIMESTAMP NOT NULL,
+			FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+		)`,
+
+		// 告警记录表
+		`CREATE TABLE IF NOT EXISTS alert_records (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			type TEXT NOT NULL,
+			value REAL NOT NULL,
+			threshold REAL NOT NULL,
+			message TEXT NOT NULL,
+			created_at TIMESTAMP NOT NULL,
+			updated_at TIMESTAMP NOT NULL
+		)`,
+
+		// 设置表
+		`CREATE TABLE IF NOT EXISTS settings (
+			key TEXT PRIMARY KEY,
+			value TEXT NOT NULL
+		)`,
+	}
+
+	for _, table := range tables {
+		_, err := db.db.Exec(table)
+		if err != nil {
+			return fmt.Errorf("创建表失败: %v", err)
+		}
+	}
+
+	return nil
+}
+
+// Begin 开始事务
+func (db *SQLiteDB) Begin() error {
+	if db.tx != nil {
+		return fmt.Errorf("transaction already started")
+	}
+
+	tx, err := db.db.Begin()
+	if err != nil {
+		return err
+	}
+
+	db.tx = tx
+	return nil
+}
+
+// Commit 提交事务
+func (db *SQLiteDB) Commit() error {
+	if db.tx == nil {
+		return fmt.Errorf("no active transaction")
+	}
+
+	err := db.tx.Commit()
+	db.tx = nil
+	return err
+}
+
+// Rollback 回滚事务
+func (db *SQLiteDB) Rollback() error {
+	if db.tx == nil {
+		return fmt.Errorf("no active transaction")
+	}
+
+	err := db.tx.Rollback()
+	db.tx = nil
+	return err
+}
+
+// Close 关闭数据库连接
+func (db *SQLiteDB) Close() error {
+	if db.tx != nil {
+		db.tx.Rollback()
+	}
+	return db.db.Close()
+}
+
+// 下面是实现DB接口的其他方法...
+// 为了简化，这里仅实现一部分核心方法，其他方法可以根据需要添加
+
+// CreateUser 创建用户
+func (db *SQLiteDB) CreateUser(user *User) error {
+	query := `INSERT INTO users (
+		username, password, salt, email, role, status, last_login_at, 
+		login_attempts, locked_until, is_admin, traffic_limit, traffic_used, 
+		expire_at, created_at, updated_at
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+
+	now := time.Now()
+	user.CreatedAt = now
+	user.UpdatedAt = now
+
+	var lastLoginStr, lockedUntilStr, expireAtStr interface{}
+
+	if user.LastLoginAt != nil {
+		lastLoginStr = user.LastLoginAt.Format("2006-01-02 15:04:05")
+	} else {
+		lastLoginStr = nil
+	}
+
+	if user.LockedUntil != nil {
+		lockedUntilStr = user.LockedUntil.Format("2006-01-02 15:04:05")
+	} else {
+		lockedUntilStr = nil
+	}
+
+	if user.ExpireAt != nil {
+		expireAtStr = user.ExpireAt.Format("2006-01-02 15:04:05")
+	} else {
+		expireAtStr = nil
+	}
+
+	_, err := db.db.Exec(
+		query,
+		user.Username,
+		user.Password,
+		user.Salt,
+		user.Email,
+		user.Role,
+		user.Status,
+		lastLoginStr,
+		user.LoginAttempts,
+		lockedUntilStr,
+		user.IsAdmin,
+		user.TrafficLimit,
+		user.TrafficUsed,
+		expireAtStr,
+		now.Format("2006-01-02 15:04:05"),
+		now.Format("2006-01-02 15:04:05"),
+	)
+
+	if err != nil {
+		return err
+	}
+
+	// 获取自增的ID
+	var lastID int64
+	err = db.db.QueryRow("SELECT last_insert_rowid()").Scan(&lastID)
+	if err != nil {
+		return err
+	}
+
+	user.ID = lastID
+	return nil
+}
+
+// GetUser 获取用户
+func (db *SQLiteDB) GetUser(id int64) (*User, error) {
+	query := `SELECT 
+		id, username, password, salt, email, role, status, last_login_at, 
+		login_attempts, locked_until, is_admin, traffic_limit, traffic_used, 
+		expire_at, created_at, updated_at
+	FROM users WHERE id = ?`
+
+	row := db.db.QueryRow(query, id)
+
+	user := &User{}
+	var lastLoginStr, lockedUntilStr, expireAtStr sql.NullString
+	var createdAtStr, updatedAtStr string
+
+	err := row.Scan(
+		&user.ID,
+		&user.Username,
+		&user.Password,
+		&user.Salt,
+		&user.Email,
+		&user.Role,
+		&user.Status,
+		&lastLoginStr,
+		&user.LoginAttempts,
+		&lockedUntilStr,
+		&user.IsAdmin,
+		&user.TrafficLimit,
+		&user.TrafficUsed,
+		&expireAtStr,
+		&createdAtStr,
+		&updatedAtStr,
+	)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	// 解析可选时间字段
+	if lastLoginStr.Valid {
+		lastLogin, _ := time.Parse("2006-01-02 15:04:05", lastLoginStr.String)
+		user.LastLoginAt = &lastLogin
+	}
+
+	if lockedUntilStr.Valid {
+		lockedUntil, _ := time.Parse("2006-01-02 15:04:05", lockedUntilStr.String)
+		user.LockedUntil = &lockedUntil
+	}
+
+	if expireAtStr.Valid {
+		expireAt, _ := time.Parse("2006-01-02 15:04:05", expireAtStr.String)
+		user.ExpireAt = &expireAt
+	}
+
+	// 解析必须时间字段
+	user.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAtStr)
+	user.UpdatedAt, _ = time.Parse("2006-01-02 15:04:05", updatedAtStr)
+
+	return user, nil
+}
+
+// GetUserByUsername 根据用户名获取用户
+func (db *SQLiteDB) GetUserByUsername(username string) (*User, error) {
+	query := `SELECT 
+		id, username, password, salt, email, role, status, last_login_at, 
+		login_attempts, locked_until, is_admin, traffic_limit, traffic_used, 
+		expire_at, created_at, updated_at
+	FROM users WHERE username = ?`
+
+	row := db.db.QueryRow(query, username)
+
+	user := &User{}
+	var lastLoginStr, lockedUntilStr, expireAtStr sql.NullString
+	var createdAtStr, updatedAtStr string
+
+	err := row.Scan(
+		&user.ID,
+		&user.Username,
+		&user.Password,
+		&user.Salt,
+		&user.Email,
+		&user.Role,
+		&user.Status,
+		&lastLoginStr,
+		&user.LoginAttempts,
+		&lockedUntilStr,
+		&user.IsAdmin,
+		&user.TrafficLimit,
+		&user.TrafficUsed,
+		&expireAtStr,
+		&createdAtStr,
+		&updatedAtStr,
+	)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	// 解析可选时间字段
+	if lastLoginStr.Valid {
+		lastLogin, _ := time.Parse("2006-01-02 15:04:05", lastLoginStr.String)
+		user.LastLoginAt = &lastLogin
+	}
+
+	if lockedUntilStr.Valid {
+		lockedUntil, _ := time.Parse("2006-01-02 15:04:05", lockedUntilStr.String)
+		user.LockedUntil = &lockedUntil
+	}
+
+	if expireAtStr.Valid {
+		expireAt, _ := time.Parse("2006-01-02 15:04:05", expireAtStr.String)
+		user.ExpireAt = &expireAt
+	}
+
+	// 解析必须时间字段
+	user.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAtStr)
+	user.UpdatedAt, _ = time.Parse("2006-01-02 15:04:05", updatedAtStr)
+
+	return user, nil
+}
+
+// GetUserByEmail 根据邮箱获取用户
+func (db *SQLiteDB) GetUserByEmail(email string) (*User, error) {
+	query := `SELECT 
+		id, username, password, salt, email, role, status, last_login_at, 
+		login_attempts, locked_until, is_admin, traffic_limit, traffic_used, 
+		expire_at, created_at, updated_at
+	FROM users WHERE email = ?`
+
+	row := db.db.QueryRow(query, email)
+
+	user := &User{}
+	var lastLoginStr, lockedUntilStr, expireAtStr sql.NullString
+	var createdAtStr, updatedAtStr string
+
+	err := row.Scan(
+		&user.ID,
+		&user.Username,
+		&user.Password,
+		&user.Salt,
+		&user.Email,
+		&user.Role,
+		&user.Status,
+		&lastLoginStr,
+		&user.LoginAttempts,
+		&lockedUntilStr,
+		&user.IsAdmin,
+		&user.TrafficLimit,
+		&user.TrafficUsed,
+		&expireAtStr,
+		&createdAtStr,
+		&updatedAtStr,
+	)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	// 解析可选时间字段
+	if lastLoginStr.Valid {
+		lastLogin, _ := time.Parse("2006-01-02 15:04:05", lastLoginStr.String)
+		user.LastLoginAt = &lastLogin
+	}
+
+	if lockedUntilStr.Valid {
+		lockedUntil, _ := time.Parse("2006-01-02 15:04:05", lockedUntilStr.String)
+		user.LockedUntil = &lockedUntil
+	}
+
+	if expireAtStr.Valid {
+		expireAt, _ := time.Parse("2006-01-02 15:04:05", expireAtStr.String)
+		user.ExpireAt = &expireAt
+	}
+
+	// 解析必须时间字段
+	user.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAtStr)
+	user.UpdatedAt, _ = time.Parse("2006-01-02 15:04:05", updatedAtStr)
+
+	return user, nil
+}
+
+// UpdateUser 更新用户
+func (db *SQLiteDB) UpdateUser(user *User) error {
+	query := `UPDATE users SET
+		username = ?, password = ?, salt = ?, email = ?, role = ?, status = ?,
+		last_login_at = ?, login_attempts = ?, locked_until = ?, is_admin = ?,
+		traffic_limit = ?, traffic_used = ?, expire_at = ?, updated_at = ?
+	WHERE id = ?`
+
+	now := time.Now()
+	user.UpdatedAt = now
+
+	var lastLoginStr, lockedUntilStr, expireAtStr interface{}
+
+	if user.LastLoginAt != nil {
+		lastLoginStr = user.LastLoginAt.Format("2006-01-02 15:04:05")
+	} else {
+		lastLoginStr = nil
+	}
+
+	if user.LockedUntil != nil {
+		lockedUntilStr = user.LockedUntil.Format("2006-01-02 15:04:05")
+	} else {
+		lockedUntilStr = nil
+	}
+
+	if user.ExpireAt != nil {
+		expireAtStr = user.ExpireAt.Format("2006-01-02 15:04:05")
+	} else {
+		expireAtStr = nil
+	}
+
+	_, err := db.db.Exec(
+		query,
+		user.Username,
+		user.Password,
+		user.Salt,
+		user.Email,
+		user.Role,
+		user.Status,
+		lastLoginStr,
+		user.LoginAttempts,
+		lockedUntilStr,
+		user.IsAdmin,
+		user.TrafficLimit,
+		user.TrafficUsed,
+		expireAtStr,
+		now.Format("2006-01-02 15:04:05"),
+		user.ID,
+	)
+
+	return err
+}
+
+// DeleteUser 删除用户
+func (db *SQLiteDB) DeleteUser(id int64) error {
+	query := `DELETE FROM users WHERE id = ?`
+	_, err := db.db.Exec(query, id)
+	return err
+}
+
+// ListUsers 获取用户列表
+func (db *SQLiteDB) ListUsers(page, pageSize int) ([]*User, error) {
+	offset := (page - 1) * pageSize
+	query := `SELECT 
+		id, username, email, password, salt, role, 
+		status, traffic_limit, traffic_used, expire_at, 
+		last_login_at, login_attempts, locked_until, is_admin,
+		created_at, updated_at
+	FROM users ORDER BY created_at DESC LIMIT ? OFFSET ?`
+
+	rows, err := db.db.Query(query, pageSize, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var users []*User
+	for rows.Next() {
+		user := &User{}
+		var expireAt, lastLoginAt, lockedUntil sql.NullTime
+
+		err := rows.Scan(
+			&user.ID, &user.Username, &user.Email, &user.Password,
+			&user.Salt, &user.Role, &user.Status, &user.TrafficLimit,
+			&user.TrafficUsed, &expireAt, &lastLoginAt, &user.LoginAttempts,
+			&lockedUntil, &user.IsAdmin, &user.CreatedAt, &user.UpdatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		if expireAt.Valid {
+			user.ExpireAt = &expireAt.Time
+		}
+		if lastLoginAt.Valid {
+			user.LastLoginAt = &lastLoginAt.Time
+		}
+		if lockedUntil.Valid {
+			user.LockedUntil = &lockedUntil.Time
+		}
+
+		users = append(users, user)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return users, nil
+}
+
+// GetTotalUsers 获取用户总数
+func (db *SQLiteDB) GetTotalUsers() (int64, error) {
+	var count int64
+	err := db.db.QueryRow("SELECT COUNT(*) FROM users").Scan(&count)
+	return count, err
+}
+
+// SearchUsers 搜索用户
+func (db *SQLiteDB) SearchUsers(keyword string) ([]*User, error) {
+	query := `SELECT 
+		id, username, password, salt, email, role, status, last_login_at, 
+		login_attempts, locked_until, is_admin, traffic_limit, traffic_used, 
+		expire_at, created_at, updated_at
+	FROM users 
+	WHERE username LIKE ? OR email LIKE ? OR role LIKE ?
+	ORDER BY created_at DESC`
+
+	keyword = "%" + keyword + "%"
+	rows, err := db.db.Query(query, keyword, keyword, keyword)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var users []*User
+	for rows.Next() {
+		user := &User{}
+		var lastLoginStr, lockedUntilStr, expireAtStr sql.NullString
+		var createdAtStr, updatedAtStr string
+
+		err := rows.Scan(
+			&user.ID,
+			&user.Username,
+			&user.Password,
+			&user.Salt,
+			&user.Email,
+			&user.Role,
+			&user.Status,
+			&lastLoginStr,
+			&user.LoginAttempts,
+			&lockedUntilStr,
+			&user.IsAdmin,
+			&user.TrafficLimit,
+			&user.TrafficUsed,
+			&expireAtStr,
+			&createdAtStr,
+			&updatedAtStr,
+		)
+
+		if err != nil {
+			return nil, err
+		}
+
+		// 解析可选时间字段
+		if lastLoginStr.Valid {
+			lastLogin, _ := time.Parse("2006-01-02 15:04:05", lastLoginStr.String)
+			user.LastLoginAt = &lastLogin
+		}
+
+		if lockedUntilStr.Valid {
+			lockedUntil, _ := time.Parse("2006-01-02 15:04:05", lockedUntilStr.String)
+			user.LockedUntil = &lockedUntil
+		}
+
+		if expireAtStr.Valid {
+			expireAt, _ := time.Parse("2006-01-02 15:04:05", expireAtStr.String)
+			user.ExpireAt = &expireAt
+		}
+
+		// 解析必须时间字段
+		user.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAtStr)
+		user.UpdatedAt, _ = time.Parse("2006-01-02 15:04:05", updatedAtStr)
+
+		users = append(users, user)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return users, nil
+}
+
+// ListProtocolStatsByUserID 获取用户的所有协议统计
+func (db *SQLiteDB) ListProtocolStatsByUserID(userID int64) ([]*ProtocolStats, error) {
+	query := `SELECT 
+		ps.id, ps.protocol_id, ps.user_id, ps.upload, ps.download, ps.last_active, ps.created_at, ps.updated_at
+		FROM protocol_stats ps
+		WHERE ps.user_id = ?`
+
+	rows, err := db.db.Query(query, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var stats []*ProtocolStats
+	for rows.Next() {
+		stat := &ProtocolStats{}
+		var lastActiveStr, createdAtStr, updatedAtStr string
+
+		err := rows.Scan(
+			&stat.ID,
+			&stat.ProtocolID,
+			&stat.UserID,
+			&stat.Upload,
+			&stat.Download,
+			&lastActiveStr,
+			&createdAtStr,
+			&updatedAtStr,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		// 解析时间字段
+		stat.LastActive, _ = time.Parse("2006-01-02 15:04:05", lastActiveStr)
+		stat.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAtStr)
+		stat.UpdatedAt, _ = time.Parse("2006-01-02 15:04:05", updatedAtStr)
+
+		stats = append(stats, stat)
+	}
+
+	return stats, nil
+}
+
+// GetProtocolStatsByUserIDGORM 使用GORM风格接口的协议统计查询
+func (db *SQLiteDB) GetProtocolStatsByUserIDGORM(userID uint, stats *[]*ProtocolStats) error {
+	// 由于我们不使用GORM，这里只是一个兼容层
+	results, err := db.ListProtocolStatsByUserID(int64(userID))
+	if err != nil {
+		return err
+	}
+
+	*stats = results
+	return nil
+}
+
+// CreateCertificate 创建证书
+func (db *SQLiteDB) CreateCertificate(cert *Certificate) error {
+	query := `INSERT INTO certificates (
+		domain, cert_file, key_file, status, last_checked_at, 
+		last_renewed_at, expires_at, created_at, updated_at
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+
+	now := time.Now()
+
+	_, err := db.db.Exec(
+		query,
+		cert.Domain,
+		cert.CertFile,
+		cert.KeyFile,
+		cert.Status,
+		cert.LastCheckedAt,
+		cert.LastRenewedAt,
+		cert.ExpiresAt,
+		now,
+		now,
+	)
+	return err
+}
+
+// GetCertificate 获取证书
+func (db *SQLiteDB) GetCertificate(domain string) (*Certificate, error) {
+	query := `SELECT 
+		id, domain, cert_file, key_file, status, last_checked_at, 
+		last_renewed_at, expires_at, created_at, updated_at
+	FROM certificates WHERE domain = ?`
+
+	row := db.db.QueryRow(query, domain)
+
+	cert := &Certificate{}
+	var lastCheckedStr, lastRenewedStr, expiresStr, createdAtStr, updatedAtStr string
+
+	err := row.Scan(
+		&cert.ID,
+		&cert.Domain,
+		&cert.CertFile,
+		&cert.KeyFile,
+		&cert.Status,
+		&lastCheckedStr,
+		&lastRenewedStr,
+		&expiresStr,
+		&createdAtStr,
+		&updatedAtStr,
+	)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	// 解析时间
+	cert.LastCheckedAt, _ = time.Parse("2006-01-02 15:04:05", lastCheckedStr)
+	cert.LastRenewedAt, _ = time.Parse("2006-01-02 15:04:05", lastRenewedStr)
+	cert.ExpiresAt, _ = time.Parse("2006-01-02 15:04:05", expiresStr)
+	cert.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAtStr)
+	cert.UpdatedAt, _ = time.Parse("2006-01-02 15:04:05", updatedAtStr)
+
+	return cert, nil
+}
+
+// CreateAlert 创建告警记录
+func (db *SQLiteDB) CreateAlert(alert *AlertRecord) error {
+	query := `INSERT INTO alert_records (type, value, threshold, message, created_at, updated_at)
+              VALUES (?, ?, ?, ?, ?, ?)`
+
+	now := time.Now()
+	_, err := db.db.Exec(query, alert.Type, alert.Value, alert.Threshold, alert.Message, now, now)
+	return err
+}
+
+// GetAlert 获取告警记录
+func (db *SQLiteDB) GetAlert(id int64) (*AlertRecord, error) {
+	query := `SELECT id, type, value, threshold, message, created_at, updated_at
+              FROM alert_records WHERE id = ?`
+
+	row := db.db.QueryRow(query, id)
+	alert := &AlertRecord{}
+	var createdAt, updatedAt string
+
+	err := row.Scan(
+		&alert.ID,
+		&alert.Type,
+		&alert.Value,
+		&alert.Threshold,
+		&alert.Message,
+		&createdAt,
+		&updatedAt,
+	)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	// 解析时间
+	alert.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAt)
+	alert.UpdatedAt, _ = time.Parse("2006-01-02 15:04:05", updatedAt)
+
+	return alert, nil
+}
+
+// ListAlerts 获取告警记录列表
+func (db *SQLiteDB) ListAlerts(page, pageSize int) ([]*AlertRecord, error) {
+	offset := (page - 1) * pageSize
+	query := `SELECT id, type, value, threshold, message, created_at, updated_at
+              FROM alert_records ORDER BY created_at DESC LIMIT ? OFFSET ?`
+
+	rows, err := db.db.Query(query, pageSize, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var alerts []*AlertRecord
+	for rows.Next() {
+		alert := &AlertRecord{}
+		var createdAt, updatedAt string
+
+		err := rows.Scan(
+			&alert.ID,
+			&alert.Type,
+			&alert.Value,
+			&alert.Threshold,
+			&alert.Message,
+			&createdAt,
+			&updatedAt,
+		)
+
+		if err != nil {
+			return nil, err
+		}
+
+		// 解析时间
+		alert.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAt)
+		alert.UpdatedAt, _ = time.Parse("2006-01-02 15:04:05", updatedAt)
+
+		alerts = append(alerts, alert)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return alerts, nil
+}
+
+// DeleteAlert 删除告警记录
+func (db *SQLiteDB) DeleteAlert(id int64) error {
+	query := `DELETE FROM alert_records WHERE id = ?`
+	_, err := db.db.Exec(query, id)
+	return err
+}
+
+// CreateLog 创建日志
+func (db *SQLiteDB) CreateLog(log *Log) error {
+	query := `INSERT INTO logs (
+		level, module, message, details, ip, user_agent, user_id, username, created_at, updated_at
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+
+	now := time.Now()
+
+	_, err := db.db.Exec(
+		query,
+		log.Level,
+		log.Module,
+		log.Message,
+		log.Details,
+		log.IP,
+		log.UserAgent,
+		log.UserID,
+		log.Username,
+		now,
+		now,
+	)
+	return err
+}
+
+// GetLog 获取日志
+func (db *SQLiteDB) GetLog(id int64) (*Log, error) {
+	query := `SELECT 
+		id, level, module, message, details, ip, user_agent, user_id, username, created_at, updated_at
+	FROM logs WHERE id = ?`
+
+	row := db.db.QueryRow(query, id)
+
+	log := &Log{}
+	var createdStr, updatedStr string
+
+	err := row.Scan(
+		&log.ID,
+		&log.Level,
+		&log.Module,
+		&log.Message,
+		&log.Details,
+		&log.IP,
+		&log.UserAgent,
+		&log.UserID,
+		&log.Username,
+		&createdStr,
+		&updatedStr,
+	)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	// 解析时间
+	log.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdStr)
+	log.UpdatedAt, _ = time.Parse("2006-01-02 15:04:05", updatedStr)
+
+	return log, nil
+}
+
+// UpdateLog 更新日志
+func (db *SQLiteDB) UpdateLog(log *Log) error {
+	query := `UPDATE logs SET
+		level = ?, module = ?, message = ?, details = ?, ip = ?,
+		user_agent = ?, user_id = ?, username = ?, updated_at = ?
+	WHERE id = ?`
+
+	now := time.Now()
+
+	_, err := db.db.Exec(
+		query,
+		log.Level,
+		log.Module,
+		log.Message,
+		log.Details,
+		log.IP,
+		log.UserAgent,
+		log.UserID,
+		log.Username,
+		now.Format("2006-01-02 15:04:05"),
+		log.ID,
+	)
+	return err
+}
+
+// DeleteLog 删除日志
+func (db *SQLiteDB) DeleteLog(id int64) error {
+	query := `DELETE FROM logs WHERE id = ?`
+	_, err := db.db.Exec(query, id)
+	return err
+}
+
+// ListLogs 列出日志
+func (db *SQLiteDB) ListLogs(query *LogQuery) ([]*Log, error) {
+	// 构建查询语句
+	sqlQuery := `SELECT 
+		id, level, module, message, details, ip, user_agent, user_id, username, created_at, updated_at
+	FROM logs WHERE 1=1`
+
+	var args []interface{}
+
+	// 添加过滤条件
+	if query.Level != "" {
+		sqlQuery += " AND level = ?"
+		args = append(args, query.Level)
+	}
+
+	if query.Module != "" {
+		sqlQuery += " AND module = ?"
+		args = append(args, query.Module)
+	}
+
+	if !query.StartTime.IsZero() {
+		sqlQuery += " AND created_at >= ?"
+		args = append(args, query.StartTime.Format("2006-01-02 15:04:05"))
+	}
+
+	if !query.EndTime.IsZero() {
+		sqlQuery += " AND created_at <= ?"
+		args = append(args, query.EndTime.Format("2006-01-02 15:04:05"))
+	}
+
+	if query.UserID != 0 {
+		sqlQuery += " AND user_id = ?"
+		args = append(args, query.UserID)
+	}
+
+	// 添加排序
+	sqlQuery += " ORDER BY created_at DESC"
+
+	// 添加分页
+	if query.Page > 0 && query.PageSize > 0 {
+		offset := (query.Page - 1) * query.PageSize
+		sqlQuery += " LIMIT ? OFFSET ?"
+		args = append(args, query.PageSize, offset)
+	}
+
+	// 执行查询
+	rows, err := db.db.Query(sqlQuery, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var logs []*Log
+	for rows.Next() {
+		log := &Log{}
+		var createdStr, updatedStr string
+
+		err := rows.Scan(
+			&log.ID,
+			&log.Level,
+			&log.Module,
+			&log.Message,
+			&log.Details,
+			&log.IP,
+			&log.UserAgent,
+			&log.UserID,
+			&log.Username,
+			&createdStr,
+			&updatedStr,
+		)
+
+		if err != nil {
+			return nil, err
+		}
+
+		// 解析时间
+		log.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdStr)
+		log.UpdatedAt, _ = time.Parse("2006-01-02 15:04:05", updatedStr)
+
+		logs = append(logs, log)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return logs, nil
+}
+
+// GetTotalLogs 获取日志总数
+func (db *SQLiteDB) GetTotalLogs(query *LogQuery) (int64, error) {
+	// 构建查询语句
+	sqlQuery := "SELECT COUNT(*) FROM logs WHERE 1=1"
+
+	var args []interface{}
+
+	// 添加过滤条件
+	if query.Level != "" {
+		sqlQuery += " AND level = ?"
+		args = append(args, query.Level)
+	}
+
+	if query.Module != "" {
+		sqlQuery += " AND module = ?"
+		args = append(args, query.Module)
+	}
+
+	if !query.StartTime.IsZero() {
+		sqlQuery += " AND created_at >= ?"
+		args = append(args, query.StartTime.Format("2006-01-02 15:04:05"))
+	}
+
+	if !query.EndTime.IsZero() {
+		sqlQuery += " AND created_at <= ?"
+		args = append(args, query.EndTime.Format("2006-01-02 15:04:05"))
+	}
+
+	if query.UserID != 0 {
+		sqlQuery += " AND user_id = ?"
+		args = append(args, query.UserID)
+	}
+
+	// 执行查询
+	var count int64
+	err := db.db.QueryRow(sqlQuery, args...).Scan(&count)
+	return count, err
+}
+
+// DeleteLogsBefore 删除指定时间之前的日志
+func (db *SQLiteDB) DeleteLogsBefore(date time.Time) error {
+	query := `DELETE FROM logs WHERE created_at < ?`
+	_, err := db.db.Exec(query, date.Format("2006-01-02 15:04:05"))
+	return err
+}
+
+// ExportLogs 导出日志
+func (db *SQLiteDB) ExportLogs(query *LogQuery) (string, error) {
+	// 在实际实现中，这里应该创建一个日志文件并返回其路径
+	// 这里仅作为示例，返回一个假路径
+	return "/tmp/logs_export.csv", nil
+}
+
+// CleanupTraffic 清理指定日期之前的流量记录
+func (db *SQLiteDB) CleanupTraffic(before time.Time) error {
+	query := `DELETE FROM traffic_stats WHERE date < ?`
+	_, err := db.db.Exec(query, before.Format("2006-01-02"))
+	return err
+}
+
+// CreateBackup 创建数据库备份
+func (db *SQLiteDB) CreateBackup(backup *Backup) error {
+	// 实现备份逻辑
+	// 这里只是简单示例，实际应用中应该实现真正的备份功能
+	query := `INSERT INTO backups (path, size, status, timestamp, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`
+	now := time.Now()
+	backup.CreatedAt = now
+	backup.UpdatedAt = now
+
+	_, err := db.db.Exec(query, backup.Path, backup.Size, backup.Status, backup.Timestamp, backup.CreatedAt, backup.UpdatedAt)
+	return err
+}
+
+// CreateDailyStats 创建每日流量统计
+func (db *SQLiteDB) CreateDailyStats(stats *DailyStats) error {
+	// 实现每日流量统计创建逻辑
+	query := `INSERT INTO daily_stats (user_id, date, upload, download, total, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`
+	now := time.Now()
+	stats.CreatedAt = now
+	stats.UpdatedAt = now
+
+	_, err := db.db.Exec(query, stats.UserID, stats.Date, stats.Upload, stats.Download, stats.Total, stats.CreatedAt, stats.UpdatedAt)
+	return err
+}
+
+// DeleteDailyStatsBefore 删除指定日期之前的每日流量统计
+func (db *SQLiteDB) DeleteDailyStatsBefore(date time.Time) error {
+	// 实现删除逻辑
+	query := `DELETE FROM daily_stats WHERE date < ?`
+	_, err := db.db.Exec(query, date)
+	return err
+}
+
+// ListDailyStatsByUserID 列出指定用户的每日流量统计
+func (db *SQLiteDB) ListDailyStatsByUserID(userID int64) ([]*DailyStats, error) {
+	// 实现列表查询逻辑
+	query := `SELECT id, user_id, date, upload, download, total, created_at, updated_at FROM daily_stats WHERE user_id = ? ORDER BY date DESC`
+	rows, err := db.db.Query(query, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var stats []*DailyStats
+	for rows.Next() {
+		stat := &DailyStats{}
+		err := rows.Scan(&stat.ID, &stat.UserID, &stat.Date, &stat.Upload, &stat.Download, &stat.Total, &stat.CreatedAt, &stat.UpdatedAt)
+		if err != nil {
+			return nil, err
+		}
+		stats = append(stats, stat)
+	}
+
+	return stats, nil
+}
+
+// ListProtocolStatsByProtocolID 列出指定协议的流量统计
+func (db *SQLiteDB) ListProtocolStatsByProtocolID(protocolID int64) ([]*ProtocolStats, error) {
+	// 实现协议流量统计查询逻辑
+	query := `SELECT id, protocol_id, user_id, upload, download, date, last_active, created_at, updated_at FROM protocol_stats WHERE protocol_id = ? ORDER BY date DESC`
+	rows, err := db.db.Query(query, protocolID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var stats []*ProtocolStats
+	for rows.Next() {
+		stat := &ProtocolStats{}
+		var dateStr string
+		err := rows.Scan(&stat.ID, &stat.ProtocolID, &stat.UserID, &stat.Upload, &stat.Download, &dateStr, &stat.LastActive, &stat.CreatedAt, &stat.UpdatedAt)
+		if err != nil {
+			return nil, err
+		}
+		stats = append(stats, stat)
+	}
+
+	return stats, nil
+}
+
+// CreateProtocol 创建协议
+func (db *SQLiteDB) CreateProtocol(protocol *Protocol) error {
+	query := `INSERT INTO protocols (user_id, type, name, port, settings, enable, expire_at, traffic_limit, traffic_used, created_at, updated_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+
+	now := time.Now()
+	_, err := db.db.Exec(
+		query,
+		protocol.UserID,
+		protocol.Type,
+		protocol.Name,
+		protocol.Port,
+		protocol.Settings,
+		protocol.Enable,
+		protocol.ExpireAt,
+		protocol.TrafficLimit,
+		protocol.TrafficUsed,
+		now,
+		now,
+	)
+	return err
+}
+
+// UpdateProtocol 更新协议
+func (db *SQLiteDB) UpdateProtocol(protocol *Protocol) error {
+	query := `UPDATE protocols SET
+              user_id = ?,
+              type = ?,
+              name = ?,
+              port = ?,
+              settings = ?,
+              enable = ?,
+              expire_at = ?,
+              traffic_limit = ?,
+              traffic_used = ?,
+              updated_at = ?
+              WHERE id = ?`
+
+	_, err := db.db.Exec(
+		query,
+		protocol.UserID,
+		protocol.Type,
+		protocol.Name,
+		protocol.Port,
+		protocol.Settings,
+		protocol.Enable,
+		protocol.ExpireAt,
+		protocol.TrafficLimit,
+		protocol.TrafficUsed,
+		time.Now(),
+		protocol.ID,
+	)
+	return err
+}
+
+// GetProtocol 获取协议
+func (db *SQLiteDB) GetProtocol(id int64) (*Protocol, error) {
+	query := `SELECT id, user_id, type, name, port, settings, enable, expire_at, traffic_limit, traffic_used, created_at, updated_at
+              FROM protocols WHERE id = ?`
+
+	row := db.db.QueryRow(query, id)
+	protocol := &Protocol{}
+
+	var settings []byte
+	var expireAt, createdAt, updatedAt string
+
+	err := row.Scan(
+		&protocol.ID,
+		&protocol.UserID,
+		&protocol.Type,
+		&protocol.Name,
+		&protocol.Port,
+		&settings,
+		&protocol.Enable,
+		&expireAt,
+		&protocol.TrafficLimit,
+		&protocol.TrafficUsed,
+		&createdAt,
+		&updatedAt,
+	)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	// 解析时间和二进制数据
+	protocol.Settings = settings
+	protocol.ExpireAt, _ = time.Parse("2006-01-02 15:04:05", expireAt)
+	protocol.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAt)
+	protocol.UpdatedAt, _ = time.Parse("2006-01-02 15:04:05", updatedAt)
+
+	return protocol, nil
+}
+
+// GetProtocolsByUserID 获取用户的所有协议
+func (db *SQLiteDB) GetProtocolsByUserID(userID int64) ([]*Protocol, error) {
+	query := `SELECT id, user_id, type, name, port, settings, enable, expire_at, traffic_limit, traffic_used, created_at, updated_at
+              FROM protocols WHERE user_id = ?`
+
+	rows, err := db.db.Query(query, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var protocols []*Protocol
+	for rows.Next() {
+		protocol := &Protocol{}
+		var settings []byte
+		var expireAt, createdAt, updatedAt string
+
+		err := rows.Scan(
+			&protocol.ID,
+			&protocol.UserID,
+			&protocol.Type,
+			&protocol.Name,
+			&protocol.Port,
+			&settings,
+			&protocol.Enable,
+			&expireAt,
+			&protocol.TrafficLimit,
+			&protocol.TrafficUsed,
+			&createdAt,
+			&updatedAt,
+		)
+
+		if err != nil {
+			return nil, err
+		}
+
+		// 解析时间和二进制数据
+		protocol.Settings = settings
+		protocol.ExpireAt, _ = time.Parse("2006-01-02 15:04:05", expireAt)
+		protocol.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAt)
+		protocol.UpdatedAt, _ = time.Parse("2006-01-02 15:04:05", updatedAt)
+
+		protocols = append(protocols, protocol)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return protocols, nil
+}
+
+// DeleteProtocol 删除协议
+func (db *SQLiteDB) DeleteProtocol(id int64) error {
+	query := `DELETE FROM protocols WHERE id = ?`
+	_, err := db.db.Exec(query, id)
+	return err
+}
+
+// GetProtocolsByPort 根据端口获取协议
+func (db *SQLiteDB) GetProtocolsByPort(port int) ([]*Protocol, error) {
+	query := `SELECT id, user_id, type, name, port, settings, enable, expire_at, traffic_limit, traffic_used, created_at, updated_at
+              FROM protocols WHERE port = ?`
+
+	rows, err := db.db.Query(query, port)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var protocols []*Protocol
+	for rows.Next() {
+		protocol := &Protocol{}
+		var settings []byte
+		var expireAt, createdAt, updatedAt string
+
+		err := rows.Scan(
+			&protocol.ID,
+			&protocol.UserID,
+			&protocol.Type,
+			&protocol.Name,
+			&protocol.Port,
+			&settings,
+			&protocol.Enable,
+			&expireAt,
+			&protocol.TrafficLimit,
+			&protocol.TrafficUsed,
+			&createdAt,
+			&updatedAt,
+		)
+
+		if err != nil {
+			return nil, err
+		}
+
+		// 解析时间和二进制数据
+		protocol.Settings = settings
+		protocol.ExpireAt, _ = time.Parse("2006-01-02 15:04:05", expireAt)
+		protocol.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAt)
+		protocol.UpdatedAt, _ = time.Parse("2006-01-02 15:04:05", updatedAt)
+
+		protocols = append(protocols, protocol)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return protocols, nil
+}
+
+// ListProtocols 列出所有协议
+func (db *SQLiteDB) ListProtocols(page, pageSize int) ([]*Protocol, error) {
+	offset := (page - 1) * pageSize
+	query := `SELECT id, user_id, type, name, port, settings, enable, expire_at, traffic_limit, traffic_used, created_at, updated_at
+              FROM protocols ORDER BY created_at DESC LIMIT ? OFFSET ?`
+
+	rows, err := db.db.Query(query, pageSize, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var protocols []*Protocol
+	for rows.Next() {
+		protocol := &Protocol{}
+		var settings []byte
+		var expireAt, createdAt, updatedAt string
+
+		err := rows.Scan(
+			&protocol.ID,
+			&protocol.UserID,
+			&protocol.Type,
+			&protocol.Name,
+			&protocol.Port,
+			&settings,
+			&protocol.Enable,
+			&expireAt,
+			&protocol.TrafficLimit,
+			&protocol.TrafficUsed,
+			&createdAt,
+			&updatedAt,
+		)
+
+		if err != nil {
+			return nil, err
+		}
+
+		// 解析时间和二进制数据
+		protocol.Settings = settings
+		protocol.ExpireAt, _ = time.Parse("2006-01-02 15:04:05", expireAt)
+		protocol.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAt)
+		protocol.UpdatedAt, _ = time.Parse("2006-01-02 15:04:05", updatedAt)
+
+		protocols = append(protocols, protocol)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return protocols, nil
+}
+
+// GetTotalProtocols 获取协议总数
+func (db *SQLiteDB) GetTotalProtocols() (int64, error) {
+	var count int64
+	err := db.db.QueryRow("SELECT COUNT(*) FROM protocols").Scan(&count)
+	return count, err
+}
+
+// SearchProtocols 搜索协议
+func (db *SQLiteDB) SearchProtocols(keyword string) ([]*Protocol, error) {
+	query := `SELECT id, user_id, type, name, port, settings, enable, expire_at, traffic_limit, traffic_used, created_at, updated_at
+              FROM protocols WHERE name LIKE ? OR type LIKE ? ORDER BY created_at DESC`
+
+	keyword = "%" + keyword + "%"
+	rows, err := db.db.Query(query, keyword, keyword)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var protocols []*Protocol
+	for rows.Next() {
+		protocol := &Protocol{}
+		var settings []byte
+		var expireAt, createdAt, updatedAt string
+
+		err := rows.Scan(
+			&protocol.ID,
+			&protocol.UserID,
+			&protocol.Type,
+			&protocol.Name,
+			&protocol.Port,
+			&settings,
+			&protocol.Enable,
+			&expireAt,
+			&protocol.TrafficLimit,
+			&protocol.TrafficUsed,
+			&createdAt,
+			&updatedAt,
+		)
+
+		if err != nil {
+			return nil, err
+		}
+
+		// 解析时间和二进制数据
+		protocol.Settings = settings
+		protocol.ExpireAt, _ = time.Parse("2006-01-02 15:04:05", expireAt)
+		protocol.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAt)
+		protocol.UpdatedAt, _ = time.Parse("2006-01-02 15:04:05", updatedAt)
+
+		protocols = append(protocols, protocol)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return protocols, nil
+}
+
+// CreateProtocolStats 创建协议统计记录
+func (db *SQLiteDB) CreateProtocolStats(stats *ProtocolStats) error {
+	query := `INSERT INTO protocol_stats (protocol_id, user_id, upload, download, last_active, created_at, updated_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?)`
+
+	now := time.Now()
+	stats.CreatedAt = now
+	stats.UpdatedAt = now
+
+	_, err := db.db.Exec(
+		query,
+		stats.ProtocolID,
+		stats.UserID,
+		stats.Upload,
+		stats.Download,
+		stats.LastActive,
+		stats.CreatedAt,
+		stats.UpdatedAt,
+	)
+	return err
+}
+
+// GetProtocolStats 获取协议统计记录
+func (db *SQLiteDB) GetProtocolStats(userID int64) (*ProtocolStats, error) {
+	query := `SELECT 
+		id, protocol_id, user_id, upload, download, last_active, created_at, updated_at
+		FROM protocol_stats 
+		WHERE user_id = ? 
+		ORDER BY created_at DESC 
+		LIMIT 1`
+
+	stats := &ProtocolStats{}
+	var lastActiveStr, createdAt, updatedAt string
+
+	err := db.db.QueryRow(query, userID).Scan(
+		&stats.ID,
+		&stats.ProtocolID,
+		&stats.UserID,
+		&stats.Upload,
+		&stats.Download,
+		&lastActiveStr,
+		&createdAt,
+		&updatedAt,
+	)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	// 解析时间
+	stats.LastActive, _ = time.Parse("2006-01-02 15:04:05", lastActiveStr)
+	stats.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAt)
+	stats.UpdatedAt, _ = time.Parse("2006-01-02 15:04:05", updatedAt)
+
+	return stats, nil
+}
+
+// UpdateProtocolStats 更新协议统计记录
+func (db *SQLiteDB) UpdateProtocolStats(stats *ProtocolStats) error {
+	query := `UPDATE protocol_stats SET
+		protocol_id = ?,
+		user_id = ?,
+		upload = ?,
+		download = ?,
+		last_active = ?,
+		updated_at = ?
+		WHERE id = ?`
+
+	now := time.Now()
+	_, err := db.db.Exec(query,
+		stats.ProtocolID,
+		stats.UserID,
+		stats.Upload,
+		stats.Download,
+		now,
+		now,
+		stats.ID)
+
+	return err
+}
+
+// DeleteProtocolStats 删除协议统计记录
+func (db *SQLiteDB) DeleteProtocolStats(id int64) error {
+	query := `DELETE FROM protocol_stats WHERE id = ?`
+	_, err := db.db.Exec(query, id)
+	return err
+}
+
+// CreateProxy 创建代理
+func (db *SQLiteDB) CreateProxy(proxy *common.Proxy) error {
+	query := `INSERT INTO proxies (
+		user_id, protocol, port, config, settings, listen_addr, remote_addr,
+		enabled, upload, download, last_active_at, created_at, updated_at, expire_at
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+
+	now := time.Now()
+
+	_, err := db.db.Exec(
+		query,
+		proxy.UserID,
+		proxy.Protocol,
+		proxy.Port,
+		proxy.Config,
+		proxy.Settings,
+		proxy.ListenAddr,
+		proxy.RemoteAddr,
+		proxy.Enabled,
+		proxy.Upload,
+		proxy.Download,
+		proxy.LastActiveAt,
+		now,
+		now,
+		proxy.ExpireAt,
+	)
+	return err
+}
+
+// GetProxy 获取代理
+func (db *SQLiteDB) GetProxy(id int64) (*common.Proxy, error) {
+	query := `SELECT 
+		id, user_id, protocol, port, config, settings, listen_addr, remote_addr,
+		enabled, upload, download, last_active_at, created_at, updated_at, expire_at
+	FROM proxies WHERE id = ?`
+
+	row := db.db.QueryRow(query, id)
+
+	proxy := &common.Proxy{}
+	var lastActiveStr, createdStr, updatedStr string
+	var expireStr sql.NullString
+
+	err := row.Scan(
+		&proxy.ID,
+		&proxy.UserID,
+		&proxy.Protocol,
+		&proxy.Port,
+		&proxy.Config,
+		&proxy.Settings,
+		&proxy.ListenAddr,
+		&proxy.RemoteAddr,
+		&proxy.Enabled,
+		&proxy.Upload,
+		&proxy.Download,
+		&lastActiveStr,
+		&createdStr,
+		&updatedStr,
+		&expireStr,
+	)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	// 解析时间
+	proxy.LastActiveAt, _ = time.Parse("2006-01-02 15:04:05", lastActiveStr)
+	proxy.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdStr)
+	proxy.UpdatedAt, _ = time.Parse("2006-01-02 15:04:05", updatedStr)
+
+	if expireStr.Valid {
+		expireAt, _ := time.Parse("2006-01-02 15:04:05", expireStr.String)
+		proxy.ExpireAt = &expireAt
+	}
+
+	return proxy, nil
+}
+
+// GetProxiesByUserID 获取用户的所有代理
+func (db *SQLiteDB) GetProxiesByUserID(userID int64) ([]*common.Proxy, error) {
+	query := `SELECT 
+		id, user_id, protocol, port, config, settings, listen_addr, remote_addr,
+		enabled, upload, download, last_active_at, created_at, updated_at, expire_at
+	FROM proxies WHERE user_id = ?`
+
+	rows, err := db.db.Query(query, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var proxies []*common.Proxy
+	for rows.Next() {
+		proxy := &common.Proxy{}
+		var lastActiveStr, createdStr, updatedStr string
+		var expireStr sql.NullString
+
+		err := rows.Scan(
+			&proxy.ID,
+			&proxy.UserID,
+			&proxy.Protocol,
+			&proxy.Port,
+			&proxy.Config,
+			&proxy.Settings,
+			&proxy.ListenAddr,
+			&proxy.RemoteAddr,
+			&proxy.Enabled,
+			&proxy.Upload,
+			&proxy.Download,
+			&lastActiveStr,
+			&createdStr,
+			&updatedStr,
+			&expireStr,
+		)
+
+		if err != nil {
+			return nil, err
+		}
+
+		// 解析时间
+		proxy.LastActiveAt, _ = time.Parse("2006-01-02 15:04:05", lastActiveStr)
+		proxy.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdStr)
+		proxy.UpdatedAt, _ = time.Parse("2006-01-02 15:04:05", updatedStr)
+
+		if expireStr.Valid {
+			expireAt, _ := time.Parse("2006-01-02 15:04:05", expireStr.String)
+			proxy.ExpireAt = &expireAt
+		}
+
+		proxies = append(proxies, proxy)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return proxies, nil
+}
+
+// UpdateProxy 更新代理
+func (db *SQLiteDB) UpdateProxy(proxy *common.Proxy) error {
+	query := `UPDATE proxies SET
+		user_id = ?, protocol = ?, port = ?, config = ?, settings = ?,
+		listen_addr = ?, remote_addr = ?, enabled = ?, upload = ?, download = ?,
+		last_active_at = ?, updated_at = ?, expire_at = ?
+	WHERE id = ?`
+
+	now := time.Now()
+	proxy.UpdatedAt = now
+
+	var expireAt interface{}
+	if proxy.ExpireAt != nil {
+		expireAt = proxy.ExpireAt.Format("2006-01-02 15:04:05")
+	} else {
+		expireAt = nil
+	}
+
+	_, err := db.db.Exec(
+		query,
+		proxy.UserID,
+		proxy.Protocol,
+		proxy.Port,
+		proxy.Config,
+		proxy.Settings,
+		proxy.ListenAddr,
+		proxy.RemoteAddr,
+		proxy.Enabled,
+		proxy.Upload,
+		proxy.Download,
+		proxy.LastActiveAt.Format("2006-01-02 15:04:05"),
+		now.Format("2006-01-02 15:04:05"),
+		expireAt,
+		proxy.ID,
+	)
+	return err
+}
+
+// DeleteProxy 删除代理
+func (db *SQLiteDB) DeleteProxy(id int64) error {
+	query := `DELETE FROM proxies WHERE id = ?`
+	_, err := db.db.Exec(query, id)
+	return err
+}
+
+// GetProxiesByPort 通过端口获取代理
+func (db *SQLiteDB) GetProxiesByPort(port int) ([]*common.Proxy, error) {
+	query := `SELECT 
+		id, user_id, protocol, port, config, settings, listen_addr, remote_addr,
+		enabled, upload, download, last_active_at, created_at, updated_at, expire_at
+	FROM proxies WHERE port = ?`
+
+	rows, err := db.db.Query(query, port)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var proxies []*common.Proxy
+	for rows.Next() {
+		proxy := &common.Proxy{}
+		var lastActiveStr, createdStr, updatedStr string
+		var expireStr sql.NullString
+
+		err := rows.Scan(
+			&proxy.ID,
+			&proxy.UserID,
+			&proxy.Protocol,
+			&proxy.Port,
+			&proxy.Config,
+			&proxy.Settings,
+			&proxy.ListenAddr,
+			&proxy.RemoteAddr,
+			&proxy.Enabled,
+			&proxy.Upload,
+			&proxy.Download,
+			&lastActiveStr,
+			&createdStr,
+			&updatedStr,
+			&expireStr,
+		)
+
+		if err != nil {
+			return nil, err
+		}
+
+		// 解析时间
+		proxy.LastActiveAt, _ = time.Parse("2006-01-02 15:04:05", lastActiveStr)
+		proxy.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdStr)
+		proxy.UpdatedAt, _ = time.Parse("2006-01-02 15:04:05", updatedStr)
+
+		if expireStr.Valid {
+			expireAt, _ := time.Parse("2006-01-02 15:04:05", expireStr.String)
+			proxy.ExpireAt = &expireAt
+		}
+
+		proxies = append(proxies, proxy)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return proxies, nil
+}
+
+// ListProxies 列出所有代理
+func (db *SQLiteDB) ListProxies(page, pageSize int) ([]*common.Proxy, error) {
+	offset := (page - 1) * pageSize
+	query := `SELECT 
+		id, user_id, protocol, port, config, settings, listen_addr, remote_addr,
+		enabled, upload, download, last_active_at, created_at, updated_at, expire_at
+	FROM proxies ORDER BY created_at DESC LIMIT ? OFFSET ?`
+
+	rows, err := db.db.Query(query, pageSize, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var proxies []*common.Proxy
+	for rows.Next() {
+		proxy := &common.Proxy{}
+		var lastActiveStr, createdStr, updatedStr string
+		var expireStr sql.NullString
+
+		err := rows.Scan(
+			&proxy.ID,
+			&proxy.UserID,
+			&proxy.Protocol,
+			&proxy.Port,
+			&proxy.Config,
+			&proxy.Settings,
+			&proxy.ListenAddr,
+			&proxy.RemoteAddr,
+			&proxy.Enabled,
+			&proxy.Upload,
+			&proxy.Download,
+			&lastActiveStr,
+			&createdStr,
+			&updatedStr,
+			&expireStr,
+		)
+
+		if err != nil {
+			return nil, err
+		}
+
+		// 解析时间
+		proxy.LastActiveAt, _ = time.Parse("2006-01-02 15:04:05", lastActiveStr)
+		proxy.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdStr)
+		proxy.UpdatedAt, _ = time.Parse("2006-01-02 15:04:05", updatedStr)
+
+		if expireStr.Valid {
+			expireAt, _ := time.Parse("2006-01-02 15:04:05", expireStr.String)
+			proxy.ExpireAt = &expireAt
+		}
+
+		proxies = append(proxies, proxy)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return proxies, nil
+}
+
+// GetTotalProxies 获取代理总数
+func (db *SQLiteDB) GetTotalProxies() (int64, error) {
+	var count int64
+	err := db.db.QueryRow("SELECT COUNT(*) FROM proxies").Scan(&count)
+	return count, err
+}
+
+// SearchProxies 搜索代理
+func (db *SQLiteDB) SearchProxies(keyword string) ([]*common.Proxy, error) {
+	query := `SELECT 
+		id, user_id, protocol, port, config, settings, listen_addr, remote_addr,
+		enabled, upload, download, last_active_at, created_at, updated_at, expire_at
+	FROM proxies 
+	WHERE protocol LIKE ? OR listen_addr LIKE ? OR remote_addr LIKE ?
+	ORDER BY created_at DESC`
+
+	keyword = "%" + keyword + "%"
+	rows, err := db.db.Query(query, keyword, keyword, keyword)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var proxies []*common.Proxy
+	for rows.Next() {
+		proxy := &common.Proxy{}
+		var lastActiveStr, createdStr, updatedStr string
+		var expireStr sql.NullString
+
+		err := rows.Scan(
+			&proxy.ID,
+			&proxy.UserID,
+			&proxy.Protocol,
+			&proxy.Port,
+			&proxy.Config,
+			&proxy.Settings,
+			&proxy.ListenAddr,
+			&proxy.RemoteAddr,
+			&proxy.Enabled,
+			&proxy.Upload,
+			&proxy.Download,
+			&lastActiveStr,
+			&createdStr,
+			&updatedStr,
+			&expireStr,
+		)
+
+		if err != nil {
+			return nil, err
+		}
+
+		// 解析时间
+		proxy.LastActiveAt, _ = time.Parse("2006-01-02 15:04:05", lastActiveStr)
+		proxy.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdStr)
+		proxy.UpdatedAt, _ = time.Parse("2006-01-02 15:04:05", updatedStr)
+
+		if expireStr.Valid {
+			expireAt, _ := time.Parse("2006-01-02 15:04:05", expireStr.String)
+			proxy.ExpireAt = &expireAt
+		}
+
+		proxies = append(proxies, proxy)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return proxies, nil
+}
+
+// CreateTraffic 创建流量记录
+func (db *SQLiteDB) CreateTraffic(traffic *common.TrafficStats) error {
+	query := `INSERT INTO traffic_stats (user_id, proxy_id, upload, download, created_at)
+              VALUES (?, ?, ?, ?, ?)`
+
+	now := time.Now()
+
+	_, err := db.db.Exec(
+		query,
+		traffic.UserID,
+		traffic.ProxyID,
+		traffic.Upload,
+		traffic.Download,
+		now,
+	)
+	return err
+}
+
+// GetTraffic 获取流量记录
+func (db *SQLiteDB) GetTraffic(id int64) (*common.TrafficStats, error) {
+	query := `SELECT id, user_id, proxy_id, upload, download, created_at
+              FROM traffic_stats WHERE id = ?`
+
+	row := db.db.QueryRow(query, id)
+
+	traffic := &common.TrafficStats{}
+	var createdStr string
+
+	err := row.Scan(
+		&traffic.ID,
+		&traffic.UserID,
+		&traffic.ProxyID,
+		&traffic.Upload,
+		&traffic.Download,
+		&createdStr,
+	)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	// 解析时间
+	traffic.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdStr)
+
+	return traffic, nil
+}
+
+// UpdateTraffic 更新流量记录
+func (db *SQLiteDB) UpdateTraffic(traffic *common.TrafficStats) error {
+	query := `UPDATE traffic_stats SET
+              user_id = ?, proxy_id = ?, upload = ?, download = ?
+              WHERE id = ?`
+
+	_, err := db.db.Exec(
+		query,
+		traffic.UserID,
+		traffic.ProxyID,
+		traffic.Upload,
+		traffic.Download,
+		traffic.ID,
+	)
+	return err
+}
+
+// DeleteTraffic 删除流量记录
+func (db *SQLiteDB) DeleteTraffic(id int64) error {
+	query := `DELETE FROM traffic_stats WHERE id = ?`
+	_, err := db.db.Exec(query, id)
+	return err
+}
+
+// ListTrafficByUserID 获取用户的流量记录
+func (db *SQLiteDB) ListTrafficByUserID(userID int64) ([]*common.TrafficStats, error) {
+	query := `SELECT id, user_id, proxy_id, upload, download, created_at
+              FROM traffic_stats WHERE user_id = ? ORDER BY created_at DESC`
+
+	rows, err := db.db.Query(query, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var stats []*common.TrafficStats
+	for rows.Next() {
+		stat := &common.TrafficStats{}
+		var createdStr string
+
+		err := rows.Scan(
+			&stat.ID,
+			&stat.UserID,
+			&stat.ProxyID,
+			&stat.Upload,
+			&stat.Download,
+			&createdStr,
+		)
+
+		if err != nil {
+			return nil, err
+		}
+
+		// 解析时间
+		stat.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdStr)
+
+		stats = append(stats, stat)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return stats, nil
+}
+
+// ListTrafficByProxyID 获取代理的流量记录
+func (db *SQLiteDB) ListTrafficByProxyID(proxyID int64) ([]*common.TrafficStats, error) {
+	query := `SELECT id, user_id, proxy_id, upload, download, created_at
+              FROM traffic_stats WHERE proxy_id = ? ORDER BY created_at DESC`
+
+	rows, err := db.db.Query(query, proxyID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var stats []*common.TrafficStats
+	for rows.Next() {
+		stat := &common.TrafficStats{}
+		var createdStr string
+
+		err := rows.Scan(
+			&stat.ID,
+			&stat.UserID,
+			&stat.ProxyID,
+			&stat.Upload,
+			&stat.Download,
+			&createdStr,
+		)
+
+		if err != nil {
+			return nil, err
+		}
+
+		// 解析时间
+		stat.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdStr)
+
+		stats = append(stats, stat)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return stats, nil
+}
+
+// GetTrafficStats 获取用户流量统计
+func (db *SQLiteDB) GetTrafficStats(userID uint) (*TrafficStats, error) {
+	// 示例实现，实际应从数据库中获取
+	return &TrafficStats{}, nil
+}
+
+// CreateTrafficRecord 创建流量记录
+func (db *SQLiteDB) CreateTrafficRecord(traffic *Traffic) error {
+	// 示例实现，实际应保存到数据库
+	return nil
+}
+
+// UpdateCertificate 更新证书
+func (db *SQLiteDB) UpdateCertificate(cert *Certificate) error {
+	query := `UPDATE certificates SET 
+		domain = ?, cert_file = ?, key_file = ?, status = ?, 
+		last_checked_at = ?, last_renewed_at = ?, expires_at = ?, updated_at = ?
+	WHERE id = ?`
+
+	now := time.Now()
+	_, err := db.db.Exec(
+		query,
+		cert.Domain,
+		cert.CertFile,
+		cert.KeyFile,
+		cert.Status,
+		cert.LastCheckedAt,
+		cert.LastRenewedAt,
+		cert.ExpiresAt,
+		now,
+		cert.ID,
+	)
+	return err
+}
+
+// DeleteCertificate 删除证书
+func (db *SQLiteDB) DeleteCertificate(domain string) error {
+	query := `DELETE FROM certificates WHERE domain = ?`
+	_, err := db.db.Exec(query, domain)
+	return err
+}
+
+// ListCertificates 获取所有证书
+func (db *SQLiteDB) ListCertificates() ([]*Certificate, error) {
+	query := `SELECT 
+		id, domain, cert_file, key_file, status, last_checked_at, 
+		last_renewed_at, expires_at, created_at, updated_at
+	FROM certificates ORDER BY created_at DESC`
+
+	rows, err := db.db.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var certificates []*Certificate
+	for rows.Next() {
+		cert := &Certificate{}
+		var lastCheckedStr, lastRenewedStr, expiresStr, createdAtStr, updatedAtStr string
+
+		err := rows.Scan(
+			&cert.ID,
+			&cert.Domain,
+			&cert.CertFile,
+			&cert.KeyFile,
+			&cert.Status,
+			&lastCheckedStr,
+			&lastRenewedStr,
+			&expiresStr,
+			&createdAtStr,
+			&updatedAtStr,
+		)
+
+		if err != nil {
+			return nil, err
+		}
+
+		// 解析时间
+		cert.LastCheckedAt, _ = time.Parse("2006-01-02 15:04:05", lastCheckedStr)
+		cert.LastRenewedAt, _ = time.Parse("2006-01-02 15:04:05", lastRenewedStr)
+		cert.ExpiresAt, _ = time.Parse("2006-01-02 15:04:05", expiresStr)
+		cert.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAtStr)
+		cert.UpdatedAt, _ = time.Parse("2006-01-02 15:04:05", updatedAtStr)
+
+		certificates = append(certificates, cert)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return certificates, nil
+}
+
+// DeleteBackup 删除备份
+func (db *SQLiteDB) DeleteBackup(id int64) error {
+	query := `DELETE FROM backups WHERE id = ?`
+	_, err := db.db.Exec(query, id)
+	return err
+}
+
+// UpdateBackup 更新备份
+func (db *SQLiteDB) UpdateBackup(backup *Backup) error {
+	query := `UPDATE backups SET
+		path = ?, size = ?, status = ?, timestamp = ?, updated_at = ?
+		WHERE id = ?`
+
+	now := time.Now()
+
+	_, err := db.db.Exec(
+		query,
+		backup.Path,
+		backup.Size,
+		backup.Status,
+		backup.Timestamp.Format("2006-01-02 15:04:05"),
+		now.Format("2006-01-02 15:04:05"),
+		backup.ID,
+	)
+	return err
+}
+
+// GetBackup 获取备份
+func (db *SQLiteDB) GetBackup(id int64) (*Backup, error) {
+	query := `SELECT id, path, size, status, timestamp, created_at, updated_at
+              FROM backups WHERE id = ?`
+
+	row := db.db.QueryRow(query, id)
+
+	backup := &Backup{}
+	var timestampStr, createdStr, updatedStr string
+
+	err := row.Scan(
+		&backup.ID,
+		&backup.Path,
+		&backup.Size,
+		&backup.Status,
+		&timestampStr,
+		&createdStr,
+		&updatedStr,
+	)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	// 解析时间
+	backup.Timestamp, _ = time.Parse("2006-01-02 15:04:05", timestampStr)
+	backup.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdStr)
+	backup.UpdatedAt, _ = time.Parse("2006-01-02 15:04:05", updatedStr)
+
+	return backup, nil
+}
+
+// ListBackups 列出所有备份
+func (db *SQLiteDB) ListBackups() ([]*Backup, error) {
+	query := `SELECT id, path, size, status, timestamp, created_at, updated_at
+              FROM backups ORDER BY timestamp DESC`
+
+	rows, err := db.db.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var backups []*Backup
+	for rows.Next() {
+		backup := &Backup{}
+		var timestampStr, createdStr, updatedStr string
+
+		err := rows.Scan(
+			&backup.ID,
+			&backup.Path,
+			&backup.Size,
+			&backup.Status,
+			&timestampStr,
+			&createdStr,
+			&updatedStr,
+		)
+
+		if err != nil {
+			return nil, err
+		}
+
+		// 解析时间
+		backup.Timestamp, _ = time.Parse("2006-01-02 15:04:05", timestampStr)
+		backup.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdStr)
+		backup.UpdatedAt, _ = time.Parse("2006-01-02 15:04:05", updatedStr)
+
+		backups = append(backups, backup)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return backups, nil
+}
+
+// GetTotalBackups 获取备份总数
+func (db *SQLiteDB) GetTotalBackups() (int64, error) {
+	var count int64
+	err := db.db.QueryRow("SELECT COUNT(*) FROM backups").Scan(&count)
+	return count, err
+}
+
+// DeleteBackupsBefore 删除指定时间之前的备份
+func (db *SQLiteDB) DeleteBackupsBefore(date time.Time) error {
+	query := `DELETE FROM backups WHERE timestamp < ?`
+	_, err := db.db.Exec(query, date.Format("2006-01-02 15:04:05"))
+	return err
+}
+
+// getSystemValue 获取系统设置值
+func (db *SQLiteDB) getSystemValue(key string) (string, error) {
+	query := `SELECT value FROM system WHERE key = ?`
+	var value string
+	err := db.db.QueryRow(query, key).Scan(&value)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return "", nil
+		}
+		return "", err
+	}
+	return value, nil
+}
+
+// setSystemValue 设置系统设置值
+func (db *SQLiteDB) setSystemValue(key, value string) error {
+	// 先检查键是否存在
+	var count int
+	err := db.db.QueryRow(`SELECT COUNT(*) FROM system WHERE key = ?`, key).Scan(&count)
+	if err != nil {
+		return err
+	}
+
+	now := time.Now().Format("2006-01-02 15:04:05")
+
+	if count > 0 {
+		// 更新现有记录
+		_, err = db.db.Exec(
+			`UPDATE system SET value = ?, updated_at = ? WHERE key = ?`,
+			value, now, key,
+		)
+	} else {
+		// 插入新记录
+		_, err = db.db.Exec(
+			`INSERT INTO system (key, value, created_at, updated_at) VALUES (?, ?, ?, ?)`,
+			key, value, now, now,
+		)
+	}
+
+	return err
+}
+
+// CreateTrafficHistory 创建流量历史记录
+func (db *SQLiteDB) CreateTrafficHistory(history *TrafficHistory) error {
+	query := `INSERT INTO traffic_history 
+		(user_id, protocol, upload, download, date, created_at, updated_at) 
+		VALUES (?, ?, ?, ?, ?, ?, ?)`
+
+	now := time.Now()
+	_, err := db.db.Exec(query,
+		history.UserID,
+		history.Protocol,
+		history.Upload,
+		history.Download,
+		history.Date,
+		now,
+		now)
+
+	return err
+}
+
+// ListTrafficHistoryByDateRange 按日期范围列出流量历史记录
+func (db *SQLiteDB) ListTrafficHistoryByDateRange(userID uint, startDate, endDate string, histories *[]*TrafficHistory) error {
+	query := `SELECT id, user_id, protocol, upload, download, date, created_at, updated_at
+		FROM traffic_history
+		WHERE user_id = ? AND date BETWEEN ? AND ?
+		ORDER BY date ASC`
+
+	rows, err := db.db.Query(query, int64(userID), startDate, endDate)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	result := make([]*TrafficHistory, 0)
+	for rows.Next() {
+		history := &TrafficHistory{}
+		var createdAtStr, updatedAtStr string
+
+		err := rows.Scan(
+			&history.ID,
+			&history.UserID,
+			&history.Protocol,
+			&history.Upload,
+			&history.Download,
+			&history.Date,
+			&createdAtStr,
+			&updatedAtStr,
+		)
+		if err != nil {
+			return err
+		}
+
+		// 解析时间字段
+		history.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAtStr)
+		history.UpdatedAt, _ = time.Parse("2006-01-02 15:04:05", updatedAtStr)
+
+		result = append(result, history)
+	}
+
+	*histories = result
+	return nil
+}
+
+// CreateAlertRecord 创建告警记录
+func (db *SQLiteDB) CreateAlertRecord(record *AlertRecord) error {
+	query := `INSERT INTO alert_records 
+		(type, value, threshold, message, created_at, updated_at) 
+		VALUES (?, ?, ?, ?, ?, ?)`
+
+	now := time.Now()
+	_, err := db.db.Exec(query,
+		record.Type,
+		record.Value,
+		record.Threshold,
+		record.Message,
+		now,
+		now)
+
+	return err
+}
+
+// ListAlertRecords 列出告警记录
+func (db *SQLiteDB) ListAlertRecords(out *[]*AlertRecord) error {
+	query := `SELECT id, type, value, threshold, message, created_at, updated_at 
+		FROM alert_records 
+		ORDER BY created_at DESC`
+
+	rows, err := db.db.Query(query)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	result := []*AlertRecord{}
+	for rows.Next() {
+		record := &AlertRecord{}
+		var createdAt, updatedAt string
+
+		err := rows.Scan(
+			&record.ID,
+			&record.Type,
+			&record.Value,
+			&record.Threshold,
+			&record.Message,
+			&createdAt,
+			&updatedAt)
+
+		if err != nil {
+			return err
+		}
+
+		record.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAt)
+		record.UpdatedAt, _ = time.Parse("2006-01-02 15:04:05", updatedAt)
+
+		result = append(result, record)
+	}
+
+	*out = result
+	return nil
+}
+
+// ListProtocolStatsByUserID 获取用户的所有协议统计
+func (db *SQLiteDB) ListProtocolStatsByUserID(userID uint, stats *[]*ProtocolStats) error {
+	tx := db.db.Where("user_id = ?", userID).Find(stats)
+	return tx.Error
+}
+
+// GetProtocolStatsByID 根据ID获取协议统计
+func (db *SQLiteDB) GetProtocolStatsByID(id uint, stats *ProtocolStats) error {
+	query := `SELECT id, protocol_id, user_id, upload, download, last_active, created_at, updated_at
+		FROM protocol_stats 
+		WHERE protocol_id = ?`
+
+	var lastActiveStr, createdAtStr, updatedAtStr string
+	err := db.db.QueryRow(query, int64(id)).Scan(
+		&stats.ID,
+		&stats.ProtocolID,
+		&stats.UserID,
+		&stats.Upload,
+		&stats.Download,
+		&lastActiveStr,
+		&createdAtStr,
+		&updatedAtStr,
+	)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return ErrNotFound
+		}
+		return err
+	}
+
+	// 解析时间
+	stats.LastActive, _ = time.Parse("2006-01-02 15:04:05", lastActiveStr)
+	stats.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAtStr)
+	stats.UpdatedAt, _ = time.Parse("2006-01-02 15:04:05", updatedAtStr)
+
+	return nil
+}
+
+// GetSettings 获取设置
+func (db *SQLiteDB) GetSettings(key string) (string, error) {
+	var value string
+	query := "SELECT value FROM settings WHERE key = ?"
+	err := db.db.QueryRow(query, key).Scan(&value)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return "", ErrNotFound
+		}
+		return "", err
+	}
+	return value, nil
+}
+
+// SetSettings 设置
+func (db *SQLiteDB) SetSettings(key, value string) error {
+	query := `INSERT INTO settings (key, value) VALUES (?, ?) 
+              ON CONFLICT(key) DO UPDATE SET value = ?`
+	_, err := db.db.Exec(query, key, value, value)
+	return err
+}
+
+// InitTables 初始化数据库表
+func (db *SQLiteDB) InitTables() error {
+	tables := []string{
+		// 用户表
+		`CREATE TABLE IF NOT EXISTS users (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			username TEXT NOT NULL UNIQUE,
+			password TEXT NOT NULL,
+			salt TEXT NOT NULL,
+			email TEXT NOT NULL UNIQUE,
+			role TEXT NOT NULL,
+			status TEXT NOT NULL,
+			last_login_at TIMESTAMP,
+			login_attempts INTEGER NOT NULL DEFAULT 0,
+			locked_until TIMESTAMP,
+			is_admin BOOLEAN NOT NULL DEFAULT 0,
+			traffic_limit INTEGER NOT NULL DEFAULT 0,
+			traffic_used INTEGER NOT NULL DEFAULT 0,
+			expire_at TIMESTAMP,
+			created_at TIMESTAMP NOT NULL,
+			updated_at TIMESTAMP NOT NULL
+		)`,
+
+		// 协议表
+		`CREATE TABLE IF NOT EXISTS protocols (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			user_id INTEGER NOT NULL,
+			type TEXT NOT NULL,
+			name TEXT NOT NULL,
+			settings BLOB NOT NULL,
+			status TEXT NOT NULL,
+			port INTEGER NOT NULL,
+			traffic_limit INTEGER NOT NULL DEFAULT 0,
+			traffic_used INTEGER NOT NULL DEFAULT 0,
+			expire_at TIMESTAMP,
+			enable BOOLEAN NOT NULL DEFAULT 1,
+			last_active TIMESTAMP,
+			created_at TIMESTAMP NOT NULL,
+			updated_at TIMESTAMP NOT NULL
+		)`,
+
+		// 协议统计表
+		`CREATE TABLE IF NOT EXISTS protocol_stats (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			protocol_id INTEGER NOT NULL,
+			user_id INTEGER NOT NULL,
+			upload INTEGER NOT NULL DEFAULT 0,
+			download INTEGER NOT NULL DEFAULT 0,
+			last_active TIMESTAMP,
+			created_at TIMESTAMP NOT NULL,
+			updated_at TIMESTAMP NOT NULL
+		)`,
+
+		// 证书表
+		`CREATE TABLE IF NOT EXISTS certificates (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			domain TEXT NOT NULL UNIQUE,
+			cert_file TEXT NOT NULL,
+			key_file TEXT NOT NULL,
+			status TEXT NOT NULL,
+			last_checked_at TIMESTAMP NOT NULL,
+			last_renewed_at TIMESTAMP NOT NULL,
+			expires_at TIMESTAMP NOT NULL,
+			created_at TIMESTAMP NOT NULL,
+			updated_at TIMESTAMP NOT NULL
+		)`,
+
+		// 流量记录表
+		`CREATE TABLE IF NOT EXISTS traffic (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			user_id INTEGER NOT NULL,
+			proxy_id INTEGER NOT NULL,
+			up INTEGER NOT NULL DEFAULT 0,
+			down INTEGER NOT NULL DEFAULT 0,
+			created_at TIMESTAMP NOT NULL,
+			updated_at TIMESTAMP NOT NULL
+		)`,
+
+		// 每日流量统计表
+		`CREATE TABLE IF NOT EXISTS daily_stats (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			user_id INTEGER NOT NULL,
+			date TIMESTAMP NOT NULL,
+			upload INTEGER NOT NULL DEFAULT 0,
+			download INTEGER NOT NULL DEFAULT 0,
+			total INTEGER NOT NULL DEFAULT 0,
+			created_at TIMESTAMP NOT NULL,
+			updated_at TIMESTAMP NOT NULL
+		)`,
+
+		// 告警记录表
+		`CREATE TABLE IF NOT EXISTS alert_records (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			type TEXT NOT NULL,
+			value REAL NOT NULL,
+			threshold REAL NOT NULL,
+			message TEXT NOT NULL,
+			created_at TIMESTAMP NOT NULL,
+			updated_at TIMESTAMP NOT NULL
+		)`,
+
+		// 流量历史表
+		`CREATE TABLE IF NOT EXISTS traffic_history (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			user_id INTEGER NOT NULL,
+			protocol TEXT NOT NULL,
+			upload INTEGER NOT NULL DEFAULT 0,
+			download INTEGER NOT NULL DEFAULT 0,
+			date TEXT NOT NULL,
+			created_at TIMESTAMP NOT NULL,
+			updated_at TIMESTAMP NOT NULL
+		)`,
+
+		// 设置表
+		`CREATE TABLE IF NOT EXISTS settings (
+			key TEXT PRIMARY KEY,
+			value TEXT NOT NULL
+		)`,
+	}
+
+	for _, schema := range tables {
+		_, err := db.db.Exec(schema)
+		if err != nil {
+			return fmt.Errorf("create table failed: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// 修复第553行的ListUsers方法重命名为GetAllUsersInternal，并确保不使用它
+func (db *SQLiteDB) GetAllUsersInternal(users *[]*User) error {
+	rows, err := db.db.Query(`
+		SELECT 
+			id, username, email, password, salt, role, 
+			status, traffic_limit, traffic_used, expire_at, 
+			last_login_at, login_attempts, locked_until, is_admin,
+			created_at, updated_at
+		FROM users
+	`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		user := &User{}
+		var expireAt, lastLoginAt, lockedUntil sql.NullTime
+
+		err := rows.Scan(
+			&user.ID, &user.Username, &user.Email, &user.Password,
+			&user.Salt, &user.Role, &user.Status, &user.TrafficLimit,
+			&user.TrafficUsed, &expireAt, &lastLoginAt, &user.LoginAttempts,
+			&lockedUntil, &user.IsAdmin, &user.CreatedAt, &user.UpdatedAt,
+		)
+		if err != nil {
+			return err
+		}
+
+		if expireAt.Valid {
+			user.ExpireAt = &expireAt.Time
+		}
+		if lastLoginAt.Valid {
+			user.LastLoginAt = &lastLoginAt.Time
+		}
+		if lockedUntil.Valid {
+			user.LockedUntil = &lockedUntil.Time
+		}
+
+		*users = append(*users, user)
+	}
+
+	return rows.Err()
+}
+
+// GetProtocolStatsByUserIDPtr 使用指针接收返回值的获取用户协议统计的方法
+func (db *SQLiteDB) GetProtocolStatsByUserIDPtr(userID uint, stats *[]*ProtocolStats) error {
+	tx := db.db.Where("user_id = ?", userID).Find(stats)
+	return tx.Error
+}
+
+// GetAllUsers 获取所有用户，返回用户列表
+func (db *SQLiteDB) GetAllUsers() ([]*User, error) {
+	query := `SELECT 
+		id, username, email, password, salt, role, 
+		status, traffic_limit, traffic_used, expire_at, 
+		last_login_at, login_attempts, locked_until, is_admin,
+		created_at, updated_at
+	FROM users`
+
+	rows, err := db.db.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var users []*User
+	for rows.Next() {
+		user := &User{}
+		var expireAt, lastLoginAt, lockedUntil sql.NullTime
+
+		err := rows.Scan(
+			&user.ID, &user.Username, &user.Email, &user.Password,
+			&user.Salt, &user.Role, &user.Status, &user.TrafficLimit,
+			&user.TrafficUsed, &expireAt, &lastLoginAt, &user.LoginAttempts,
+			&lockedUntil, &user.IsAdmin, &user.CreatedAt, &user.UpdatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		if expireAt.Valid {
+			user.ExpireAt = &expireAt.Time
+		}
+		if lastLoginAt.Valid {
+			user.LastLoginAt = &lastLoginAt.Time
+		}
+		if lockedUntil.Valid {
+			user.LockedUntil = &lockedUntil.Time
+		}
+
+		users = append(users, user)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return users, nil
+}
