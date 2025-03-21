@@ -24,13 +24,13 @@ V 是一个功能强大的多协议代理面板，基于 x-ui 项目重新开发
 
 ```bash
 # 下载最新版本
-wget https://github.com/v-panel/v/releases/latest/download/v-linux-amd64.tar.gz
+wget https://github.com/chengchnegcheng/V/releases/latest/download/v-linux-amd64.tar.gz
 
 # 解压文件
 tar -zxvf v-linux-amd64.tar.gz
 
 # 进入目录
-cd v
+cd V
 
 # 运行
 ./v
@@ -40,10 +40,10 @@ cd v
 
 ```bash
 # 克隆仓库
-git clone https://github.com/v-panel/v.git
+git clone https://github.com/chengchnegcheng/V.git
 
 # 进入项目目录
-cd v
+cd V
 
 # 编译
 go build -o v
