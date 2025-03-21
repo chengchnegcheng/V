@@ -41,4 +41,29 @@ coverage/
 # Temporary files
 *.tmp
 *.temp
-.cache/ 
+.cache/
+
+# 数据库文件
+data/*.db
+*.db-journal
+
+# 备份文件
+*.backup
+*.bak
+*.backup_before_fix
+*.old
+
+# 编译产物
+*.out
+
+# 证书文件
+*.pem
+*.key
+*.crt
+
+# IDE和编辑器文件
+.idea/
+.vscode/
+*.swp
+*.swo
+*~ 

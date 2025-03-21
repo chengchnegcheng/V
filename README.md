@@ -1,191 +1,105 @@
-# V项目
+# V - 多协议代理面板
 
-V是一个基于x-ui项目重新开发的多协议、多用户代理面板，提供丰富的系统管理和流量控制功能。
+V 是一个功能强大的多协议代理面板，基于 x-ui 项目重新开发，提供更优雅的用户界面和更完善的功能体验。
 
-## 功能特点
+## 主要功能
 
-- **多协议支持**: 支持vmess、vless、trojan、shadowsocks、dokodemo-door、socks和http协议
-- **多用户管理**: 支持多用户系统，每个用户可单独设置权限和流量限制
-- **系统状态监控**: 实时监控CPU、内存、磁盘和网络流量状态
-- **流量统计**: 精确统计每个用户的流量使用情况，支持按协议分类
-- **流量控制**: 可设置用户流量限制和到期时间
-- **SSL证书管理**: 支持SSL证书管理和状态查看
-- **日志系统**: 完整的系统运行日志和错误日志
+- **多协议支持**: 支持 vmess、vless、trojan、shadowsocks、dokodemo-door、socks 和 http 协议
+- **用户管理**: 完善的多用户支持，权限分级控制
+- **系统监控**: 实时监控 CPU、内存、网络和磁盘使用情况
+- **流量统计与限制**: 精确的流量统计和自定义流量限制
+- **SSL 证书管理**: 自动申请、更新和管理 SSL 证书
+- **日志系统**: 详细的系统和操作日志记录
+- **美观界面**: 现代化、响应式的管理界面
 
-## 当前开发状态
+## 安装要求
 
-V项目目前处于开发阶段，主要功能已经实现：
-- 多协议支持和配置
-- 用户管理系统
-- 流量统计和限制
-- 系统监控
-- 基本的SSL证书管理
+- 操作系统: Linux (Ubuntu 16.04+, CentOS 7+) / macOS / Windows
+- Go 语言环境: 1.16 或更高版本
+- 数据库: SQLite (内置)
 
-部分功能如自动SSL证书申请更新功能正在完善中。
+## 快速安装
 
-## 快速开始
-
-### 系统要求
-
-- 操作系统: Linux (Ubuntu 16+, CentOS 7+)或macOS
-- 依赖: Go 1.15+
-
-### 安装方法
-
-#### 方法1: 从源码构建
-
-1. 克隆仓库:
+### 使用预编译二进制文件
 
 ```bash
-git clone https://github.com/chengchnegcheng/V.git
-cd V
-```
+# 下载最新版本
+wget https://github.com/yourusername/v/releases/latest/download/v-linux-amd64.tar.gz
 
-2. 构建项目:
+# 解压文件
+tar -zxvf v-linux-amd64.tar.gz
 
-```bash
-go build -o v main.go
-```
+# 进入目录
+cd v
 
-3. 启动服务:
-
-```bash
+# 运行
 ./v
 ```
 
-#### 方法2: 手动安装发布版本
-
-> 注意: 发布版本将在开发稳定后提供，当前可从源码构建使用。
-
-1. 创建工作目录:
+### 从源码编译
 
 ```bash
-mkdir -p /usr/local/v
-cd /usr/local/v
+# 克隆仓库
+git clone https://github.com/yourusername/v.git
+
+# 进入项目目录
+cd v
+
+# 编译
+go build -o v
+
+# 运行
+./v
 ```
 
-2. 下载最新版本:
+## 使用说明
 
-```bash
-# 将在后续发布版本中提供下载链接
-```
+1. 安装并启动 V 后，访问 `http://your_server_ip:8080` 打开管理界面
+2. 默认管理员账号: `admin`，密码: `admin`，初次登录请立即修改密码
+3. 在管理界面中，可以进行以下操作:
+   - 添加和管理用户
+   - 配置代理协议
+   - 监控系统状态
+   - 查看流量统计
+   - 管理 SSL 证书
+   - 配置系统设置
 
-3. 配置系统服务(可选):
+## 配置说明
 
-```bash
-cat > /etc/systemd/system/v.service << EOF
-[Unit]
-Description=V Panel Service
-After=network.target
+配置文件位于 `config/settings.json`，主要配置项包括:
 
-[Service]
-Type=simple
-WorkingDirectory=/usr/local/v
-ExecStart=/usr/local/v/v
-Restart=on-failure
-RestartSec=5s
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-# 重新加载systemd
-systemctl daemon-reload
-
-# 设置开机启动
-systemctl enable v
-
-# 启动服务
-systemctl start v
-```
-
-### 访问管理面板
-
-安装完成后，可通过以下地址访问管理面板:
-
-```
-http://你的服务器IP:54321
-```
-
-默认用户名和密码:
-- 用户名: `admin`
-- 密码: `admin`
-
-**首次登录后请立即修改默认密码!**
-
-## 配置指南
-
-### 基本配置
-
-服务启动后，首先进行以下基本配置:
-
-1. 修改管理员密码
-2. 配置面板访问端口(默认54321)
-3. 配置SSL证书(如需)
-
-### 添加用户
-
-1. 在管理面板中选择"用户管理"
-2. 点击"添加用户"
-3. 填写用户信息，包括用户名、密码、流量限制和到期时间
-4. 点击"保存"完成创建
-
-### 配置协议
-
-1. 在用户详情页面点击"添加协议"
-2. 选择要添加的协议类型(vmess/vless/trojan等)
-3. 配置协议参数
-4. 点击"保存"完成配置
+- 监听地址和端口
+- 数据库设置
+- 日志级别
+- 通知设置 (Email)
+- 证书设置
 
 ## 常见问题
 
-### 无法连接到管理面板
+1. **如何更改默认端口?**
+   修改配置文件中的 `listen` 字段，或使用命令行参数 `--listen :新端口号`
 
-- 检查服务是否正常运行: `systemctl status v`
-- 检查防火墙是否开放面板端口
-- 检查服务器网络连接是否正常
+2. **如何备份数据?**
+   数据存储在 `data/v.db` 文件中，备份此文件即可
 
-### 流量统计不准确
+3. **如何设置自动启动?**
+   请参考 [安装文档](docs/installation.md) 中的系统服务配置部分
 
-- 检查流量统计服务是否正常运行
-- 确保数据库连接正常
-- 查看错误日志: `cat /usr/local/v/logger/error.log`
+## 开发计划
 
-### SSL证书问题
+- [ ] 国际化支持
+- [ ] 两因素认证
+- [ ] 更多优化和性能提升
+- [ ] 移动端应用
 
-- 确保域名解析已正确设置
-- 确保80和443端口未被其他服务占用
-- 查看SSL相关日志获取详细信息
+## 贡献代码
 
-## 开发指南
+欢迎提交 Pull Request 或 Issue 来帮助改进项目。在提交 PR 前，请确保你的代码:
 
-V项目使用Go语言开发，前端使用Vue.js框架。如果您想参与开发，请参考[开发指南](development_guide.md)。
-
-## 故障排除
-
-遇到问题时，请参考[故障排除指南](troubleshooting_guide.md)获取详细的诊断和解决方法。
-
-## 数据库接口修复
-
-如果您遇到数据库相关问题，请参考[数据库接口修复指南](db_interface_fix.md)。
-
-## 测试
-
-V项目包含一系列测试用例，详见[测试计划](testing_plan.md)。
-
-## 贡献
-
-欢迎提交Pull Request或Issue来帮助改进V项目。在提交代码前，请确保:
-
-1. 代码遵循Go和Vue.js的编码规范
-2. 添加必要的测试和文档
-3. 确保所有测试通过
+1. 遵循 Go 代码规范
+2. 通过所有测试
+3. 包含必要的文档
 
 ## 许可证
 
-V项目基于[MIT许可证](LICENSE)开源。
-
-## 鸣谢
-
-- [x-ui项目](https://github.com/vaxilu/x-ui)：提供了V项目的基础
-- 所有贡献者和用户：感谢您的支持和反馈 
+本项目采用 MIT 许可证 - 详见 [LICENSE](LICENSE) 文件 
