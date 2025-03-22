@@ -9,6 +9,7 @@
         :default-active="activeMenu"
         class="menu"
         :collapse="isCollapse"
+        :default-openeds="openedMenus"
         router
       >
         <el-menu-item index="/">
@@ -31,7 +32,7 @@
           <el-icon><Lock /></el-icon>
           <template #title>证书管理</template>
         </el-menu-item>
-        <el-sub-menu index="monitor">
+        <el-sub-menu index="monitor-submenu">
           <template #title>
             <el-icon><DataAnalysis /></el-icon>
             <span>系统监控</span>
@@ -53,6 +54,10 @@
             <template #title>告警设置</template>
           </el-menu-item>
         </el-sub-menu>
+        <el-menu-item index="/backups">
+          <el-icon><Files /></el-icon>
+          <template #title>备份恢复</template>
+        </el-menu-item>
         <el-menu-item index="/settings">
           <el-icon><Setting /></el-icon>
           <template #title>系统设置</template>
@@ -111,14 +116,38 @@ import {
   DataAnalysis,
   Histogram,
   Document,
-  Bell
+  Bell,
+  Files
 } from '@element-plus/icons-vue'
 
 const router = useRouter()
 const route = useRoute()
 const userStore = useUserStore()
 const isCollapse = ref(false)
-const activeMenu = computed(() => route.path)
+const activeMenu = computed(() => {
+  // 获取当前路径
+  const path = route.path
+  
+  // 根据当前路径判断是否为系统监控子菜单项
+  if (['/traffic', '/monitor', '/logs', '/alerts'].includes(path)) {
+    // 当访问系统监控下的子页面时，高亮显示对应菜单项，同时保持子菜单展开
+    return path
+  }
+  
+  return path
+})
+
+// 计算当前激活的子菜单
+const activeSub = computed(() => {
+  const path = route.path
+  if (['/traffic', '/monitor', '/logs', '/alerts'].includes(path)) {
+    return 'monitor-submenu'
+  }
+  return ''
+})
+
+// 默认展开的子菜单，确保即使页面刷新，当前选中的子菜单也能保持展开状态
+const openedMenus = ref(['monitor-submenu'])
 
 const toggleCollapse = () => {
   isCollapse.value = !isCollapse.value
