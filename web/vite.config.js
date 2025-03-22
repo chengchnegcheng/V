@@ -23,12 +23,27 @@ export default defineConfig({
     outDir: 'dist',
     assetsDir: 'assets',
     sourcemap: true,
+    chunkSizeWarningLimit: 1000,
+    minify: 'terser',
+    terserOptions: {
+      compress: {
+        drop_console: true,
+        drop_debugger: true,
+      },
+    },
     rollupOptions: {
       output: {
+        chunkFileNames: 'assets/js/[name]-[hash].js',
+        entryFileNames: 'assets/js/[name]-[hash].js',
+        assetFileNames: 'assets/[ext]/[name]-[hash].[ext]',
         manualChunks: {
-          'element-plus': ['element-plus'],
+          'element-ui': ['element-plus'],
+          'element-icons': ['@element-plus/icons-vue'],
           'echarts': ['echarts'],
-          'vendor': ['vue', 'vue-router', 'pinia']
+          'vue-core': ['vue'],
+          'vue-router': ['vue-router'],
+          'pinia-store': ['pinia'],
+          'axios': ['axios']
         }
       }
     }
