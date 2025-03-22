@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -57,7 +58,7 @@ func main() {
 		)
 	})
 
-	// 路由组
+	// API路由组
 	apiGroup := r.Group("/api")
 	{
 		// 健康检查
@@ -134,10 +135,111 @@ func main() {
 		})
 	}
 
-	// 添加默认首页
-	r.GET("/", func(c *gin.Context) {
-		c.String(http.StatusOK, "V 多协议代理面板 - 已准备就绪")
-	})
+	// 检查是否存在dist目录
+	distDir := "./web/dist"
+	if _, err := os.Stat(distDir); os.IsNotExist(err) {
+		// 如果不存在dist目录，使用一个临时的HTML页面
+		r.GET("/", func(c *gin.Context) {
+			c.Header("Content-Type", "text/html")
+			c.String(http.StatusOK, `
+			<!DOCTYPE html>
+			<html>
+			<head>
+				<meta charset="UTF-8">
+				<meta name="viewport" content="width=device-width, initial-scale=1.0">
+				<title>V 多协议代理面板</title>
+				<style>
+					body {
+						font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+						display: flex;
+						flex-direction: column;
+						align-items: center;
+						justify-content: center;
+						height: 100vh;
+						margin: 0;
+						background-color: #f5f7fa;
+						color: #333;
+					}
+					.container {
+						text-align: center;
+						padding: 2rem;
+						background-color: white;
+						border-radius: 10px;
+						box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
+						max-width: 800px;
+						width: 90%;
+					}
+					h1 {
+						color: #409eff;
+						margin-bottom: 1rem;
+					}
+					p {
+						margin-bottom: 2rem;
+						line-height: 1.6;
+					}
+					.btn {
+						background-color: #409eff;
+						color: white;
+						border: none;
+						padding: 10px 20px;
+						border-radius: 4px;
+						cursor: pointer;
+						font-size: 16px;
+						text-decoration: none;
+						display: inline-block;
+						margin: 0 10px;
+					}
+					.btn:hover {
+						background-color: #66b1ff;
+					}
+					.status {
+						margin-top: 2rem;
+						padding: 15px;
+						background-color: #f0f9eb;
+						border-radius: 4px;
+						color: #67c23a;
+						font-weight: bold;
+					}
+					.error {
+						margin-top: 1rem;
+						color: #f56c6c;
+					}
+					.info {
+						font-size: 0.9rem;
+						color: #909399;
+						margin-top: 2rem;
+					}
+				</style>
+			</head>
+			<body>
+				<div class="container">
+					<h1>V 多协议代理面板</h1>
+					<p>V 是一个功能强大的多协议代理面板，支持 vmess、vless、trojan、shadowsocks 等多种协议。</p>
+					<p>前端资源尚未编译，请按照以下步骤完成设置：</p>
+					<ol style="text-align: left;">
+						<li>确保已安装 Node.js 和 npm</li>
+						<li>进入 web 目录: <code>cd web</code></li>
+						<li>安装依赖: <code>npm install</code></li>
+						<li>构建前端: <code>npm run build</code></li>
+						<li>重启服务</li>
+					</ol>
+					<div class="status">服务器运行正常，API 接口可用</div>
+					<p class="info">当前版本: 1.0.0 | 服务器时间: `+time.Now().Format("2006-01-02 15:04:05")+`</p>
+				</div>
+			</body>
+			</html>
+			`)
+		})
+	} else {
+		// 如果存在dist目录，则提供静态文件服务
+		r.StaticFS("/assets", http.Dir(filepath.Join(distDir, "assets")))
+		r.StaticFile("/favicon.ico", filepath.Join(distDir, "favicon.ico"))
+
+		// 处理所有前端路由
+		r.NoRoute(func(c *gin.Context) {
+			c.File(filepath.Join(distDir, "index.html"))
+		})
+	}
 
 	// 创建HTTP服务器
 	server := &http.Server{
