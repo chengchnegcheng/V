@@ -9,7 +9,7 @@
       </template>
       
       <el-table 
-        :data="proxies" 
+        :data="proxiesList" 
         border 
         style="width: 100%" 
         v-loading="loading"
@@ -299,11 +299,11 @@
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { proxies } from '@/api'
+import { proxies as proxiesApi } from '@/api'
 
-// 数据
+// 协议列表
+const proxiesList = ref([])
 const loading = ref(false)
-const proxies = ref([])
 const dialogVisible = ref(false)
 const viewDialogVisible = ref(false)
 const dialogType = ref('add')
@@ -392,12 +392,12 @@ const fetchProxies = async () => {
   loading.value = true
   try {
     // 实际环境下应使用API调用
-    // const res = await proxies.list()
-    // proxies.value = res.data
+    // const res = await proxiesApi.list()
+    // proxiesList.value = res.data
     
     // 使用模拟数据
     setTimeout(() => {
-      proxies.value = [
+      proxiesList.value = [
         {
           id: 1,
           name: 'VLess代理',
@@ -531,7 +531,7 @@ const handleView = (row) => {
 const handleToggleStatus = async (row) => {
   try {
     // 实际项目中应调用API
-    // await proxies.toggleStatus(row.id)
+    // await proxiesApi.toggleStatus(row.id)
     
     const action = row.status ? '停止' : '启动'
     ElMessage.success(`已${action}协议：${row.name}`)
@@ -551,9 +551,9 @@ const handleDelete = (row) => {
   }).then(async () => {
     try {
       // 实际项目中应调用API
-      // await proxies.delete(row.id)
+      // await proxiesApi.delete(row.id)
       
-      proxies.value = proxies.value.filter(p => p.id !== row.id)
+      proxiesList.value = proxiesList.value.filter(p => p.id !== row.id)
       ElMessage.success('删除成功')
     } catch (error) {
       console.error('Failed to delete proxy:', error)
@@ -574,7 +574,7 @@ const handleSaveProxy = async () => {
     if (dialogType.value === 'add') {
       // 添加新协议
       // 实际项目中应调用API
-      // await proxies.create(proxyForm)
+      // await proxiesApi.create(proxyForm)
       
       const newProxy = {
         ...JSON.parse(JSON.stringify(proxyForm)),
@@ -583,20 +583,20 @@ const handleSaveProxy = async () => {
         created: new Date().toLocaleString(),
         status: proxyForm.enabled
       }
-      proxies.value.push(newProxy)
+      proxiesList.value.push(newProxy)
       ElMessage.success('添加成功')
     } else {
       // 更新现有协议
       // 实际项目中应调用API
-      // await proxies.update(proxyForm.id, proxyForm)
+      // await proxiesApi.update(proxyForm.id, proxyForm)
       
-      const index = proxies.value.findIndex(p => p.id === proxyForm.id)
+      const index = proxiesList.value.findIndex(p => p.id === proxyForm.id)
       if (index !== -1) {
         const updatedProxy = {
           ...JSON.parse(JSON.stringify(proxyForm)),
           status: proxyForm.enabled
         }
-        proxies.value[index] = { ...proxies.value[index], ...updatedProxy }
+        proxiesList.value[index] = { ...proxiesList.value[index], ...updatedProxy }
         ElMessage.success('更新成功')
       }
     }
