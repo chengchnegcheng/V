@@ -401,4 +401,60 @@ export const usersApi = {
   }
 }
 
+// Roles API
+export const roles = {
+  getRoles: () => api.get('/roles'),
+  getRole: (id) => api.get(`/roles/${id}`),
+  createRole: (data) => api.post('/roles', data),
+  updateRole: (id, data) => api.put(`/roles/${id}`, data),
+  deleteRole: (id) => api.delete(`/roles/${id}`)
+}
+
+// 客户端API
+export const clientsApi = {
+  // 获取客户端列表
+  list: (params) => api.get('/clients', { params }),
+  
+  // 获取单个客户端详情
+  get: (id) => api.get(`/clients/${id}`),
+  
+  // 创建新客户端
+  create: (data) => api.post('/clients', data),
+  
+  // 更新客户端信息
+  update: (id, data) => api.put(`/clients/${id}`, data),
+  
+  // 删除客户端
+  delete: (id) => api.delete(`/clients/${id}`),
+  
+  // 启用客户端
+  enable: (id) => api.post(`/clients/${id}/enable`),
+  
+  // 禁用客户端
+  disable: (id) => api.post(`/clients/${id}/disable`),
+  
+  // 重置客户端流量
+  resetTraffic: (id) => api.post(`/clients/${id}/reset-traffic`),
+  
+  // 生成客户端配置文件
+  generateConfig: (id, type) => api.get(`/clients/${id}/config/${type}`, {
+    responseType: 'blob'
+  }).then(response => {
+    const url = window.URL.createObjectURL(new Blob([response]))
+    const link = document.createElement('a')
+    link.href = url
+    link.setAttribute('download', `client_config_${id}_${type}.json`)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(url)
+  }),
+  
+  // 获取客户端流量统计
+  getTrafficStats: (id, params) => api.get(`/clients/${id}/traffic`, { params }),
+  
+  // 获取客户端连接记录
+  getConnections: (id, params) => api.get(`/clients/${id}/connections`, { params })
+}
+
 export default api 

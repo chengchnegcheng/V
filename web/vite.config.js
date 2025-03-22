@@ -1,19 +1,20 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
-import path from 'path'
+import { resolve } from 'path'
 
 export default defineConfig({
   plugins: [vue()],
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, 'src'),
+      '@': resolve(__dirname, 'src'),
     },
   },
   server: {
     port: 3000,
+    open: true,
     proxy: {
       '/api': {
-        target: 'http://localhost:8080',
+        target: 'http://localhost:9000',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, ''),
       },
@@ -23,7 +24,7 @@ export default defineConfig({
     outDir: 'dist',
     assetsDir: 'assets',
     sourcemap: true,
-    chunkSizeWarningLimit: 1000,
+    chunkSizeWarningLimit: 1500,
     minify: 'terser',
     terserOptions: {
       compress: {
@@ -37,12 +38,9 @@ export default defineConfig({
         entryFileNames: 'assets/js/[name]-[hash].js',
         assetFileNames: 'assets/[ext]/[name]-[hash].[ext]',
         manualChunks: {
-          'element-ui': ['element-plus'],
-          'element-icons': ['@element-plus/icons-vue'],
-          'echarts': ['echarts'],
-          'vue-core': ['vue'],
-          'vue-router': ['vue-router'],
-          'pinia-store': ['pinia'],
+          'vue-vendor': ['vue', 'vue-router', 'pinia'],
+          'element-plus': ['element-plus'],
+          'echarts': ['echarts', 'vue-echarts'],
           'axios': ['axios']
         }
       }

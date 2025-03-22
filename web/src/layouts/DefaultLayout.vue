@@ -23,10 +23,36 @@
           <el-icon><Connection /></el-icon>
           <template #title>代理管理</template>
         </el-menu-item>
+        <el-menu-item index="/clients">
+          <el-icon><Avatar /></el-icon>
+          <template #title>客户端管理</template>
+        </el-menu-item>
         <el-menu-item index="/certificates">
           <el-icon><Lock /></el-icon>
           <template #title>证书管理</template>
         </el-menu-item>
+        <el-sub-menu index="monitor">
+          <template #title>
+            <el-icon><DataAnalysis /></el-icon>
+            <span>系统监控</span>
+          </template>
+          <el-menu-item index="/traffic">
+            <el-icon><Histogram /></el-icon>
+            <template #title>流量监控</template>
+          </el-menu-item>
+          <el-menu-item index="/monitor">
+            <el-icon><Monitor /></el-icon>
+            <template #title>资源监控</template>
+          </el-menu-item>
+          <el-menu-item index="/logs">
+            <el-icon><Document /></el-icon>
+            <template #title>系统日志</template>
+          </el-menu-item>
+          <el-menu-item index="/alerts">
+            <el-icon><Bell /></el-icon>
+            <template #title>告警设置</template>
+          </el-menu-item>
+        </el-sub-menu>
         <el-menu-item index="/settings">
           <el-icon><Setting /></el-icon>
           <template #title>系统设置</template>
@@ -80,7 +106,12 @@ import {
   Setting,
   Expand,
   Fold,
-  ArrowDown
+  ArrowDown,
+  Avatar,
+  DataAnalysis,
+  Histogram,
+  Document,
+  Bell
 } from '@element-plus/icons-vue'
 
 const router = useRouter()
