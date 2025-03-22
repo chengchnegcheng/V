@@ -32,19 +32,77 @@ const router = createRouter({
           component: () => import('./views/Users.vue') 
         },
         { 
+          path: 'roles', 
+          name: 'roles',
+          component: () => import('./views/Roles.vue') 
+        },
+        { 
           path: 'proxies', 
           name: 'proxies',
           component: () => import('./views/Proxies.vue') 
         },
         { 
+          path: 'traffic', 
+          name: 'traffic',
+          component: () => import('./views/TrafficMonitor.vue') 
+        },
+        { 
+          path: 'monitor', 
+          name: 'monitor',
+          component: () => import('./views/SystemMonitor.vue') 
+        },
+        { 
+          path: 'logs', 
+          name: 'logs',
+          component: () => import('./views/Logs.vue') 
+        },
+        { 
+          path: 'certificates', 
+          name: 'certificates',
+          component: () => import('./views/Certificates.vue') 
+        },
+        { 
+          path: 'backups', 
+          name: 'backups',
+          component: () => import('./views/Backups.vue') 
+        },
+        { 
+          path: 'alerts', 
+          name: 'alerts',
+          component: () => import('./views/AlertSettings.vue') 
+        },
+        { 
           path: 'settings', 
           name: 'settings',
           component: () => import('./views/Settings.vue') 
+        },
+        { 
+          path: 'stats', 
+          name: 'stats',
+          component: () => import('./views/Stats.vue') 
         }
       ],
       meta: { requiresAuth: true }
+    },
+    {
+      path: '/:pathMatch(.*)*',
+      name: 'notFound',
+      component: () => import('./views/NotFound.vue')
     }
   ]
+})
+
+// 路由守卫
+router.beforeEach((to, from, next) => {
+  const isAuthenticated = localStorage.getItem('token')
+  
+  if (to.meta.requiresAuth && !isAuthenticated) {
+    next('/login')
+  } else if (to.path === '/login' && isAuthenticated) {
+    next('/')
+  } else {
+    next()
+  }
 })
 
 // 创建Pinia状态管理
