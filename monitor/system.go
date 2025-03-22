@@ -11,20 +11,20 @@ import (
 	"github.com/shirou/gopsutil/v3/net"
 )
 
-// SystemMonitor handles system monitoring
-type SystemMonitor struct {
+// SystemStatsMonitor handles system monitoring
+type SystemStatsMonitor struct {
 	db model.DB
 }
 
-// NewSystemMonitor creates a new system monitor
-func NewSystemMonitor(db model.DB) *SystemMonitor {
-	return &SystemMonitor{
+// NewSystemStatsMonitor creates a new system monitor
+func NewSystemStatsMonitor(db model.DB) *SystemStatsMonitor {
+	return &SystemStatsMonitor{
 		db: db,
 	}
 }
 
 // GetSystemStats returns current system statistics
-func (m *SystemMonitor) GetSystemStats() (*model.SystemStats, error) {
+func (m *SystemStatsMonitor) GetSystemStats() (*model.SystemStats, error) {
 	stats := &model.SystemStats{}
 
 	// Get CPU stats
@@ -54,7 +54,7 @@ func (m *SystemMonitor) GetSystemStats() (*model.SystemStats, error) {
 }
 
 // getCPUStats gets CPU statistics
-func (m *SystemMonitor) getCPUStats(stats *model.SystemStats) error {
+func (m *SystemStatsMonitor) getCPUStats(stats *model.SystemStats) error {
 	// Get CPU usage
 	percent, err := cpu.Percent(time.Second, false)
 	if err != nil {
@@ -83,7 +83,7 @@ func (m *SystemMonitor) getCPUStats(stats *model.SystemStats) error {
 }
 
 // getMemoryStats gets memory statistics
-func (m *SystemMonitor) getMemoryStats(stats *model.SystemStats) error {
+func (m *SystemStatsMonitor) getMemoryStats(stats *model.SystemStats) error {
 	v, err := mem.VirtualMemory()
 	if err != nil {
 		return err
@@ -98,7 +98,7 @@ func (m *SystemMonitor) getMemoryStats(stats *model.SystemStats) error {
 }
 
 // getDiskStats gets disk statistics
-func (m *SystemMonitor) getDiskStats(stats *model.SystemStats) error {
+func (m *SystemStatsMonitor) getDiskStats(stats *model.SystemStats) error {
 	d, err := disk.Usage("/")
 	if err != nil {
 		return err
@@ -113,7 +113,7 @@ func (m *SystemMonitor) getDiskStats(stats *model.SystemStats) error {
 }
 
 // getNetworkStats gets network statistics
-func (m *SystemMonitor) getNetworkStats(stats *model.SystemStats) error {
+func (m *SystemStatsMonitor) getNetworkStats(stats *model.SystemStats) error {
 	n, err := net.IOCounters(false)
 	if err != nil {
 		return err

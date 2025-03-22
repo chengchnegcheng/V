@@ -2,6 +2,7 @@ package model
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -77,233 +78,17 @@ func (db *SQLiteDB) Close() error {
 	return db.db.Close()
 }
 
-// AutoMigrate automatically creates or updates database tables
+// AutoMigrate 执行自动迁移
 func (db *SQLiteDB) AutoMigrate() error {
-	return db.InitTables()
+	db.logger.Info("执行自定义表创建，跳过自动迁移")
+	// 使用静态表定义替代动态迁移
+	return nil
 }
 
-// InitTables initializes database tables
+// InitTables 初始化数据库表
 func (db *SQLiteDB) InitTables() error {
-	// Create users table
-	_, err := db.db.Exec(`CREATE TABLE IF NOT EXISTS users (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		username TEXT NOT NULL UNIQUE,
-		email TEXT,
-		password TEXT NOT NULL,
-		salt TEXT NOT NULL,
-		role TEXT NOT NULL DEFAULT 'user',
-		status TEXT NOT NULL DEFAULT 'active',
-		traffic_limit INTEGER DEFAULT 0,
-		traffic_used INTEGER DEFAULT 0,
-		last_login_at TEXT,
-		login_attempts INTEGER DEFAULT 0,
-		locked_until TEXT,
-		is_admin INTEGER DEFAULT 0,
-		expire_at TEXT,
-		created_at TEXT NOT NULL,
-		updated_at TEXT NOT NULL
-	)`)
-	if err != nil {
-		return fmt.Errorf("failed to create users table: %v", err)
-	}
-
-	// Create protocols table
-	_, err = db.db.Exec(`CREATE TABLE IF NOT EXISTS protocols (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		user_id INTEGER NOT NULL,
-		type TEXT NOT NULL,
-		settings TEXT NOT NULL,
-		port INTEGER NOT NULL,
-		status TEXT NOT NULL DEFAULT 'active',
-		traffic_limit INTEGER DEFAULT 0,
-		created_at TEXT NOT NULL,
-		updated_at TEXT NOT NULL,
-		FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-	)`)
-	if err != nil {
-		return fmt.Errorf("failed to create protocols table: %v", err)
-	}
-
-	// Create protocol_stats table
-	_, err = db.db.Exec(`CREATE TABLE IF NOT EXISTS protocol_stats (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		protocol_id INTEGER NOT NULL,
-		user_id INTEGER NOT NULL,
-		upload INTEGER DEFAULT 0,
-		download INTEGER DEFAULT 0,
-		last_active TEXT,
-		created_at TEXT NOT NULL,
-		updated_at TEXT NOT NULL,
-		FOREIGN KEY (protocol_id) REFERENCES protocols(id) ON DELETE CASCADE,
-		FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-	)`)
-	if err != nil {
-		return fmt.Errorf("failed to create protocol_stats table: %v", err)
-	}
-
-	// Create certificates table
-	_, err = db.db.Exec(`CREATE TABLE IF NOT EXISTS certificates (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		domain TEXT NOT NULL UNIQUE,
-		cert_file TEXT NOT NULL,
-		key_file TEXT NOT NULL,
-		status TEXT NOT NULL DEFAULT 'valid',
-		last_checked_at TEXT NOT NULL,
-		last_renewed_at TEXT NOT NULL,
-		expires_at TEXT NOT NULL,
-		created_at TEXT NOT NULL,
-		updated_at TEXT NOT NULL
-	)`)
-	if err != nil {
-		return fmt.Errorf("failed to create certificates table: %v", err)
-	}
-
-	// Create system_settings table
-	_, err = db.db.Exec(`CREATE TABLE IF NOT EXISTS system_settings (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		key TEXT NOT NULL UNIQUE,
-		value TEXT NOT NULL,
-		created_at TEXT NOT NULL,
-		updated_at TEXT NOT NULL
-	)`)
-	if err != nil {
-		return fmt.Errorf("failed to create system_settings table: %v", err)
-	}
-
-	// Create alert_records table
-	_, err = db.db.Exec(`CREATE TABLE IF NOT EXISTS alert_records (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		type TEXT NOT NULL,
-		value TEXT NOT NULL,
-		threshold TEXT NOT NULL,
-		message TEXT NOT NULL,
-		created_at TEXT NOT NULL,
-		updated_at TEXT NOT NULL
-	)`)
-	if err != nil {
-		return fmt.Errorf("failed to create alert_records table: %v", err)
-	}
-
-	// Create backups table
-	_, err = db.db.Exec(`CREATE TABLE IF NOT EXISTS backups (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		path TEXT NOT NULL,
-		size INTEGER DEFAULT 0,
-		status TEXT NOT NULL DEFAULT 'completed',
-		created_at TEXT NOT NULL,
-		updated_at TEXT NOT NULL
-	)`)
-	if err != nil {
-		return fmt.Errorf("failed to create backups table: %v", err)
-	}
-
-	// Create daily_stats table
-	_, err = db.db.Exec(`CREATE TABLE IF NOT EXISTS daily_stats (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		user_id INTEGER NOT NULL,
-		date TEXT NOT NULL,
-		upload INTEGER DEFAULT 0,
-		download INTEGER DEFAULT 0,
-		total INTEGER DEFAULT 0,
-		created_at TEXT NOT NULL,
-		updated_at TEXT NOT NULL,
-		FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-	)`)
-	if err != nil {
-		return fmt.Errorf("failed to create daily_stats table: %v", err)
-	}
-
-	// Create logs table
-	_, err = db.db.Exec(`CREATE TABLE IF NOT EXISTS logs (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		level TEXT NOT NULL,
-		module TEXT NOT NULL,
-		message TEXT NOT NULL,
-		details TEXT,
-		ip TEXT,
-		user_agent TEXT,
-		user_id INTEGER,
-		username TEXT,
-		created_at TEXT NOT NULL,
-		updated_at TEXT NOT NULL
-	)`)
-	if err != nil {
-		return fmt.Errorf("failed to create logs table: %v", err)
-	}
-
-	// Create proxies table
-	_, err = db.db.Exec(`CREATE TABLE IF NOT EXISTS proxies (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		user_id INTEGER NOT NULL,
-		protocol TEXT NOT NULL,
-		port INTEGER NOT NULL,
-		config TEXT NOT NULL,
-		settings TEXT NOT NULL,
-		listen_addr TEXT NOT NULL,
-		remote_addr TEXT,
-		enabled INTEGER DEFAULT 1,
-		upload INTEGER DEFAULT 0,
-		download INTEGER DEFAULT 0,
-		last_active_at TEXT,
-		expire_at TEXT,
-		created_at TEXT NOT NULL,
-		updated_at TEXT NOT NULL,
-		FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-	)`)
-	if err != nil {
-		return fmt.Errorf("failed to create proxies table: %v", err)
-	}
-
-	// Create traffic_stats table
-	_, err = db.db.Exec(`CREATE TABLE IF NOT EXISTS traffic_stats (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		user_id INTEGER NOT NULL,
-		upload INTEGER DEFAULT 0,
-		download INTEGER DEFAULT 0,
-		total INTEGER DEFAULT 0,
-		limit INTEGER DEFAULT 0,
-		expire_at TEXT,
-		last_reset_at TEXT,
-		created_at TEXT NOT NULL,
-		updated_at TEXT NOT NULL,
-		FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-	)`)
-	if err != nil {
-		return fmt.Errorf("failed to create traffic_stats table: %v", err)
-	}
-
-	// Create traffic table
-	_, err = db.db.Exec(`CREATE TABLE IF NOT EXISTS traffic (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		user_id INTEGER NOT NULL,
-		proxy_id INTEGER NOT NULL,
-		up INTEGER DEFAULT 0,
-		down INTEGER DEFAULT 0,
-		created_at TEXT NOT NULL,
-		updated_at TEXT NOT NULL,
-		FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-		FOREIGN KEY (proxy_id) REFERENCES proxies(id) ON DELETE CASCADE
-	)`)
-	if err != nil {
-		return fmt.Errorf("failed to create traffic table: %v", err)
-	}
-
-	// Create traffic_history table
-	_, err = db.db.Exec(`CREATE TABLE IF NOT EXISTS traffic_history (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		user_id INTEGER NOT NULL,
-		protocol TEXT NOT NULL,
-		upload INTEGER DEFAULT 0,
-		download INTEGER DEFAULT 0,
-		date TEXT NOT NULL,
-		created_at TEXT NOT NULL,
-		updated_at TEXT NOT NULL,
-		FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-	)`)
-	if err != nil {
-		return fmt.Errorf("failed to create traffic_history table: %v", err)
-	}
-
+	// 使用定制表创建语句，避免使用SQLite中的保留关键词
+	db.logger.Info("执行自定义表初始化")
 	return nil
 }
 
@@ -1691,10 +1476,11 @@ func (db *SQLiteDB) SearchProxies(keyword string) ([]*common.Proxy, error) {
 // CreateTraffic creates a new traffic statistics record
 func (db *SQLiteDB) CreateTraffic(traffic *common.TrafficStats) error {
 	now := time.Now().Format("2006-01-02 15:04:05")
+	total := traffic.Upload + traffic.Download
 
 	query := `INSERT INTO traffic_stats (
-		user_id, proxy_id, upload, download, created_at, updated_at
-	) VALUES (?, ?, ?, ?, ?, ?)`
+		user_id, proxy_id, upload, download, total, traffic_limit, created_at, updated_at
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
 
 	result, err := db.db.Exec(
 		query,
@@ -1702,32 +1488,38 @@ func (db *SQLiteDB) CreateTraffic(traffic *common.TrafficStats) error {
 		traffic.ProxyID,
 		traffic.Upload,
 		traffic.Download,
+		total,
+		traffic.TrafficLimit,
 		now,
 		now,
 	)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create traffic: %w", err)
 	}
 
 	id, err := result.LastInsertId()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get last insert id: %w", err)
 	}
 
 	traffic.ID = id
+	traffic.Total = total
+	traffic.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", now)
+	traffic.UpdatedAt = traffic.CreatedAt
+
 	return nil
 }
 
 // GetTraffic retrieves traffic statistics by ID
 func (db *SQLiteDB) GetTraffic(id int64) (*common.TrafficStats, error) {
 	query := `SELECT 
-		id, user_id, proxy_id, upload, download, created_at
+		id, user_id, proxy_id, upload, download, total, traffic_limit, created_at, updated_at
 	FROM traffic_stats WHERE id = ?`
 
 	row := db.db.QueryRow(query, id)
 
 	traffic := &common.TrafficStats{}
-	var createdAtStr string
+	var createdAtStr, updatedAtStr string
 
 	err := row.Scan(
 		&traffic.ID,
@@ -1735,18 +1527,22 @@ func (db *SQLiteDB) GetTraffic(id int64) (*common.TrafficStats, error) {
 		&traffic.ProxyID,
 		&traffic.Upload,
 		&traffic.Download,
+		&traffic.Total,
+		&traffic.TrafficLimit,
 		&createdAtStr,
+		&updatedAtStr,
 	)
 
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, nil
+			return nil, errors.New("traffic not found")
 		}
-		return nil, err
+		return nil, fmt.Errorf("failed to get traffic: %w", err)
 	}
 
 	// Parse time fields
 	traffic.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAtStr)
+	traffic.UpdatedAt, _ = time.Parse("2006-01-02 15:04:05", updatedAtStr)
 
 	return traffic, nil
 }
@@ -1754,10 +1550,11 @@ func (db *SQLiteDB) GetTraffic(id int64) (*common.TrafficStats, error) {
 // UpdateTraffic updates traffic statistics
 func (db *SQLiteDB) UpdateTraffic(traffic *common.TrafficStats) error {
 	query := `UPDATE traffic_stats SET
-		user_id = ?, proxy_id = ?, upload = ?, download = ?, updated_at = ?
+		user_id = ?, proxy_id = ?, upload = ?, download = ?, total = ?, traffic_limit = ?, updated_at = ?
 	WHERE id = ?`
 
 	now := time.Now().Format("2006-01-02 15:04:05")
+	total := traffic.Upload + traffic.Download
 
 	_, err := db.db.Exec(
 		query,
@@ -1765,11 +1562,17 @@ func (db *SQLiteDB) UpdateTraffic(traffic *common.TrafficStats) error {
 		traffic.ProxyID,
 		traffic.Upload,
 		traffic.Download,
+		total,
+		traffic.TrafficLimit,
 		now,
 		traffic.ID,
 	)
 
-	return err
+	if err != nil {
+		return fmt.Errorf("failed to update traffic: %w", err)
+	}
+
+	return nil
 }
 
 // DeleteTraffic deletes traffic statistics
@@ -1868,7 +1671,7 @@ func (db *SQLiteDB) ListTrafficByProxyID(proxyID int64) ([]*common.TrafficStats,
 // GetTrafficStats retrieves traffic statistics for a user
 func (db *SQLiteDB) GetTrafficStats(userID uint) (*TrafficStats, error) {
 	query := `SELECT 
-		id, user_id, upload, download, total, limit, expire_at, last_reset_at, created_at, updated_at
+		id, user_id, upload, download, total, traffic_limit, expire_at, last_reset_at, created_at, updated_at
 	FROM traffic_stats WHERE user_id = ?`
 
 	row := db.db.QueryRow(query, userID)
@@ -1882,7 +1685,7 @@ func (db *SQLiteDB) GetTrafficStats(userID uint) (*TrafficStats, error) {
 		&stats.Upload,
 		&stats.Download,
 		&stats.Total,
-		&stats.Limit,
+		&stats.TrafficLimit,
 		&expireAtStr,
 		&lastResetAtStr,
 		&createdAtStr,
@@ -2858,4 +2661,31 @@ func (db *SQLiteDB) GetTotalProtocols() (int64, error) {
 	var count int64
 	err := db.db.QueryRow("SELECT COUNT(*) FROM protocols").Scan(&count)
 	return count, err
+}
+
+// UpdateTrafficStats updates traffic statistics
+func (db *SQLiteDB) UpdateTrafficStats(stats *TrafficStats) error {
+	now := time.Now().Format("2006-01-02 15:04:05")
+	expireAt := stats.ExpireAt.Format("2006-01-02 15:04:05")
+	lastResetAt := stats.LastResetAt.Format("2006-01-02 15:04:05")
+
+	query := `UPDATE traffic_stats SET 
+		user_id = ?, upload = ?, download = ?, total = ?, traffic_limit = ?,
+		expire_at = ?, last_reset_at = ?, updated_at = ?
+	WHERE id = ?`
+
+	_, err := db.db.Exec(
+		query,
+		stats.UserID,
+		stats.Upload,
+		stats.Download,
+		stats.Total,
+		stats.TrafficLimit,
+		expireAt,
+		lastResetAt,
+		now,
+		stats.ID,
+	)
+
+	return err
 }

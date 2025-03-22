@@ -108,15 +108,15 @@ type Traffic struct {
 // TrafficStats 流量统计
 type TrafficStats struct {
 	Base
-	UserID      int64     `json:"user_id" db:"user_id"`
-	Upload      int64     `json:"upload" db:"upload"`
-	Download    int64     `json:"download" db:"download"`
-	Total       int64     `json:"total" db:"total"`
-	Limit       int64     `json:"limit" db:"limit"`
-	ExpireAt    time.Time `json:"expire_at" db:"expire_at"`
-	LastResetAt time.Time `json:"last_reset_at" db:"last_reset_at"`
-	UpSpeed     float64   `json:"up_speed"`
-	DownSpeed   float64   `json:"down_speed"`
+	UserID       int64     `json:"user_id" db:"user_id"`
+	Upload       int64     `json:"upload" db:"upload"`
+	Download     int64     `json:"download" db:"download"`
+	Total        int64     `json:"total" db:"total"`
+	TrafficLimit int64     `json:"traffic_limit" db:"traffic_limit"`
+	ExpireAt     time.Time `json:"expire_at" db:"expire_at"`
+	LastResetAt  time.Time `json:"last_reset_at" db:"last_reset_at"`
+	UpSpeed      float64   `json:"up_speed"`
+	DownSpeed    float64   `json:"down_speed"`
 }
 
 // DailyStats 每日流量统计

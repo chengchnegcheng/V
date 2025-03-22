@@ -582,3 +582,15 @@ func (m *CertManager) RenewCertificate(domain string) error {
 
 	return m.renewCertificate(domain, cert)
 }
+
+// CertificateManager 是证书管理器接口 (替换原有的Manager接口)
+type CertificateManager interface {
+	GetCertificate(domain string) (*model.Certificate, error)
+	CreateCertificate(domain string) (*model.Certificate, error)
+	RenewCertificate(domain string) error
+	DeleteCertificate(domain string) error
+	ListCertificates() []*model.Certificate
+}
+
+// DummyManager 是一个空实现的证书管理器
+type DummyManager struct{}

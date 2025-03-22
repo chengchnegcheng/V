@@ -96,12 +96,15 @@ type Proxy struct {
 
 // TrafficStats 流量统计
 type TrafficStats struct {
-	ID        int64     `json:"id" db:"id"`
-	UserID    int64     `json:"user_id" db:"user_id"`
-	ProxyID   int64     `json:"proxy_id" db:"proxy_id"`
-	Upload    int64     `json:"upload" db:"upload"`
-	Download  int64     `json:"download" db:"download"`
-	CreatedAt time.Time `json:"created_at" db:"created_at"`
+	ID           int64     `json:"id" db:"id"`
+	UserID       int64     `json:"user_id" db:"user_id"`
+	ProxyID      int64     `json:"proxy_id" db:"proxy_id"`
+	Upload       int64     `json:"upload" db:"upload"`
+	Download     int64     `json:"download" db:"download"`
+	Total        int64     `json:"total" db:"total"`
+	TrafficLimit int64     `json:"traffic_limit" db:"traffic_limit"`
+	CreatedAt    time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at" db:"updated_at"`
 }
 
 // VMessConfig VMess 配置

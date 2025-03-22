@@ -3,8 +3,11 @@ package traffic
 import (
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
+
+	"github.com/pkg/errors"
 
 	"v/model"
 	"v/notification"
@@ -67,6 +70,12 @@ func (m *Manager) updateStats() error {
 	// 在真实环境中，需要分页或按用户获取协议
 	var protocols []*model.Protocol
 
+	// 确保数据库连接存在
+	if m.db == nil {
+		m.logger.Error("Database connection is nil")
+		return errors.New("database connection is nil")
+	}
+
 	// 尝试获取ID为1-20的协议
 	for i := int64(1); i <= 20; i++ {
 		protocol, err := m.db.GetProtocol(i)
@@ -74,11 +83,15 @@ func (m *Manager) updateStats() error {
 			// 如果ID不存在，跳过即可
 			continue
 		}
+		if protocol == nil {
+			// 跳过nil协议
+			continue
+		}
 		protocols = append(protocols, protocol)
 	}
 
 	if len(protocols) == 0 {
-		m.logger.Info("No protocols found for traffic check")
+		m.logger.Info("No protocols found for stats update")
 		return nil
 	}
 
@@ -87,7 +100,7 @@ func (m *Manager) updateStats() error {
 
 	// 处理每个协议
 	for _, protocol := range protocols {
-		if !protocol.Enable {
+		if protocol == nil || !protocol.Enable {
 			continue
 		}
 
@@ -95,6 +108,12 @@ func (m *Manager) updateStats() error {
 		stats, err := m.getProtocolStats(protocol.ID)
 		if err != nil {
 			m.logger.Error("Failed to get protocol stats", "protocol_id", protocol.ID, "error", err)
+			continue
+		}
+
+		// 确保stats不为nil
+		if stats == nil {
+			m.logger.Error("Protocol stats is nil", "protocol_id", protocol.ID)
 			continue
 		}
 
@@ -137,11 +156,15 @@ func (m *Manager) getProtocolStats(protocolID int64) (*model.ProtocolStats, erro
 	// 从数据库中获取
 	stats, err := m.db.GetProtocolStats(protocolID)
 	if err != nil {
-		if err == model.ErrNotFound {
+		// 检查是否是"not found"错误，这里处理多种可能的错误表达形式
+		if err == model.ErrNotFound || strings.Contains(err.Error(), "not found") || strings.Contains(err.Error(), "no rows") {
 			// 如果不存在，创建新的统计信息
 			protocol, err := m.db.GetProtocol(protocolID)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("failed to get protocol for stats creation: %w", err)
+			}
+			if protocol == nil {
+				return nil, fmt.Errorf("protocol is nil for id: %d", protocolID)
 			}
 
 			stats = &model.ProtocolStats{
@@ -153,11 +176,15 @@ func (m *Manager) getProtocolStats(protocolID int64) (*model.ProtocolStats, erro
 			}
 
 			if err := m.db.CreateProtocolStats(stats); err != nil {
-				return nil, err
+				return nil, fmt.Errorf("failed to create protocol stats: %w", err)
 			}
 		} else {
-			return nil, err
+			return nil, fmt.Errorf("failed to get protocol stats: %w", err)
 		}
+	}
+
+	if stats == nil {
+		return nil, fmt.Errorf("protocol stats is nil for id: %d", protocolID)
 	}
 
 	// 更新缓存
