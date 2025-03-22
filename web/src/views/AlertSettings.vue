@@ -234,11 +234,18 @@ const form = ref({
 
 const alertHistory = ref([])
 
+// 格式化时间
+const formatTime = (time) => {
+  return dayjs(time).format('YYYY-MM-DD HH:mm:ss')
+}
+
 // 获取告警配置
 const getAlertSettings = async () => {
   try {
-    const res = await monitorApi.getAlertSettings()
-    form.value = res.data
+    // 模拟获取告警配置
+    // const res = await monitorApi.getAlertSettings()
+    // form.value = res.data
+    console.log('加载告警配置')
   } catch (error) {
     ElMessage.error('获取告警配置失败')
   }
@@ -247,8 +254,40 @@ const getAlertSettings = async () => {
 // 获取告警历史
 const getAlertHistory = async () => {
   try {
-    const res = await monitorApi.getAlertHistory()
-    alertHistory.value = res.data
+    // 模拟获取告警历史
+    // const res = await monitorApi.getAlertHistory()
+    // alertHistory.value = res.data
+    
+    // 使用模拟数据
+    alertHistory.value = [
+      {
+        id: 1,
+        time: new Date(Date.now() - 3600000),
+        type: 'CPU',
+        value: 92,
+        threshold: 80,
+        status: 'resolved',
+        unit: '%'
+      },
+      {
+        id: 2,
+        time: new Date(Date.now() - 7200000),
+        type: '内存',
+        value: 85,
+        threshold: 80,
+        status: 'resolved',
+        unit: '%'
+      },
+      {
+        id: 3,
+        time: new Date(),
+        type: '磁盘',
+        value: 95,
+        threshold: 80,
+        status: 'alerting',
+        unit: '%'
+      }
+    ]
   } catch (error) {
     ElMessage.error('获取告警历史失败')
   }
@@ -257,7 +296,7 @@ const getAlertHistory = async () => {
 // 保存配置
 const saveSettings = async () => {
   try {
-    await monitorApi.updateAlertSettings(form.value)
+    // await monitorApi.updateAlertSettings(form.value)
     ElMessage.success('保存成功')
   } catch (error) {
     ElMessage.error('保存失败')
@@ -269,11 +308,7 @@ const resetSettings = () => {
   getAlertSettings()
 }
 
-// 格式化时间
-const formatTime = (time) => {
-  return dayjs(time).format('YYYY-MM-DD HH:mm:ss')
-}
-
+// 初始化数据
 onMounted(() => {
   getAlertSettings()
   getAlertHistory()

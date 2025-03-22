@@ -299,7 +299,7 @@
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { proxies as proxiesApi } from '@/api'
+import { proxies } from '@/api'
 
 // 数据
 const loading = ref(false)
@@ -391,75 +391,53 @@ onMounted(() => {
 const fetchProxies = async () => {
   loading.value = true
   try {
-    // 实际项目中应使用API获取数据
-    // const response = await proxiesApi.list()
-    // proxies.value = response
+    // 实际环境下应使用API调用
+    // const res = await proxies.list()
+    // proxies.value = res.data
     
-    // 模拟数据
+    // 使用模拟数据
     setTimeout(() => {
       proxies.value = [
         {
           id: 1,
-          name: '默认VMess协议',
-          type: 'vmess',
-          port: 10086,
-          listen: '0.0.0.0',
-          users: 2,
-          created: '2023-01-01 12:00:00',
-          status: true,
-          streamSettings: {
-            network: 'tcp',
-            security: 'none'
-          },
-          sniffing: {
-            enabled: true
-          }
+          name: 'VLess代理',
+          type: 'vless',
+          port: 443,
+          users: 5,
+          created: '2023-08-01 10:30:00',
+          status: true
         },
         {
           id: 2,
-          name: '默认Trojan协议',
-          type: 'trojan',
-          port: 443,
-          listen: '0.0.0.0',
-          users: 3,
-          created: '2023-01-01 12:00:00',
-          status: true,
-          streamSettings: {
-            network: 'tcp',
-            security: 'tls',
-            tlsSettings: {
-              serverName: 'example.com'
-            }
-          },
-          sniffing: {
-            enabled: true
-          }
+          name: 'VMess代理',
+          type: 'vmess',
+          port: 8080,
+          users: 8,
+          created: '2023-07-15 14:20:00',
+          status: true
         },
         {
           id: 3,
-          name: 'WebSocket协议',
-          type: 'vmess',
-          port: 8080,
-          listen: '0.0.0.0',
-          users: 1,
-          created: '2023-01-15 15:30:00',
-          status: false,
-          streamSettings: {
-            network: 'ws',
-            security: 'none',
-            wsSettings: {
-              path: '/ws'
-            }
-          },
-          sniffing: {
-            enabled: false
-          }
+          name: 'Trojan代理',
+          type: 'trojan',
+          port: 8443,
+          users: 3,
+          created: '2023-09-02 09:15:00',
+          status: false
+        },
+        {
+          id: 4,
+          name: 'Shadowsocks代理',
+          type: 'shadowsocks',
+          port: 9000,
+          users: 10,
+          created: '2023-06-20 16:45:00',
+          status: true
         }
       ]
       loading.value = false
     }, 500)
   } catch (error) {
-    console.error('Failed to fetch proxies:', error)
     ElMessage.error('获取协议列表失败')
     loading.value = false
   }
@@ -553,7 +531,7 @@ const handleView = (row) => {
 const handleToggleStatus = async (row) => {
   try {
     // 实际项目中应调用API
-    // await proxiesApi.toggleStatus(row.id)
+    // await proxies.toggleStatus(row.id)
     
     const action = row.status ? '停止' : '启动'
     ElMessage.success(`已${action}协议：${row.name}`)
@@ -573,7 +551,7 @@ const handleDelete = (row) => {
   }).then(async () => {
     try {
       // 实际项目中应调用API
-      // await proxiesApi.delete(row.id)
+      // await proxies.delete(row.id)
       
       proxies.value = proxies.value.filter(p => p.id !== row.id)
       ElMessage.success('删除成功')
@@ -596,7 +574,7 @@ const handleSaveProxy = async () => {
     if (dialogType.value === 'add') {
       // 添加新协议
       // 实际项目中应调用API
-      // await proxiesApi.create(proxyForm)
+      // await proxies.create(proxyForm)
       
       const newProxy = {
         ...JSON.parse(JSON.stringify(proxyForm)),
@@ -610,7 +588,7 @@ const handleSaveProxy = async () => {
     } else {
       // 更新现有协议
       // 实际项目中应调用API
-      // await proxiesApi.update(proxyForm.id, proxyForm)
+      // await proxies.update(proxyForm.id, proxyForm)
       
       const index = proxies.value.findIndex(p => p.id === proxyForm.id)
       if (index !== -1) {

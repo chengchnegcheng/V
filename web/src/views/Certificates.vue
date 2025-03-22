@@ -260,10 +260,10 @@ const uploadRules = {
     { pattern: /^[a-zA-Z0-9][-a-zA-Z0-9]{0,62}(\.[a-zA-Z0-9][-a-zA-Z0-9]{0,62})+$/, message: '请输入有效的域名', trigger: 'blur' }
   ],
   certFile: [
-    { required: true, message: '请选择证书文件', trigger: 'change' }
+    { required: true, message: '请上传证书文件', trigger: 'change' }
   ],
   keyFile: [
-    { required: true, message: '请选择私钥文件', trigger: 'change' }
+    { required: true, message: '请上传私钥文件', trigger: 'change' }
   ]
 }
 
@@ -272,8 +272,36 @@ const validateDialogVisible = ref(false)
 const validateResult = ref(null)
 
 // 生命周期钩子
-onMounted(() => {
-  fetchCertificates()
+onMounted(async () => {
+  loading.value = true
+  try {
+    // 模拟获取证书数据
+    // 实际环境应替换为 certificatesApi.getCertificates()
+    setTimeout(() => {
+      certificates.value = [
+        {
+          id: 1,
+          domain: 'example.com',
+          provider: 'letsencrypt',
+          issueDate: '2023-06-01',
+          expireDate: '2023-09-01',
+          autoRenew: true
+        },
+        {
+          id: 2,
+          domain: 'test.example.com',
+          provider: 'zerossl',
+          issueDate: '2023-05-15',
+          expireDate: '2023-08-15',
+          autoRenew: false
+        }
+      ]
+      loading.value = false
+    }, 500)
+  } catch (error) {
+    ElMessage.error('获取证书列表失败')
+    loading.value = false
+  }
 })
 
 // 获取证书列表

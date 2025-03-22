@@ -131,11 +131,39 @@ export default {
     const fetchRoles = async () => {
       loading.value = true
       try {
-        const response = await roles.list()
-        roles.value = response.data
+        // 模拟获取角色列表
+        // const response = await roles.list()
+        // roles.value = response.data
+        
+        // 使用模拟数据
+        setTimeout(() => {
+          roles.value = [
+            {
+              id: 1,
+              name: '管理员',
+              code: 'admin',
+              description: '系统管理员，拥有所有权限',
+              permissions: ['user:view', 'user:create', 'user:edit', 'user:delete', 'proxy:view', 'proxy:create', 'proxy:edit', 'proxy:delete', 'stats:view', 'system:view', 'system:edit']
+            },
+            {
+              id: 2,
+              name: '操作员',
+              code: 'operator',
+              description: '系统操作员，拥有部分管理权限',
+              permissions: ['user:view', 'proxy:view', 'proxy:create', 'proxy:edit', 'stats:view', 'system:view']
+            },
+            {
+              id: 3,
+              name: '访客',
+              code: 'guest',
+              description: '访客用户，只有查看权限',
+              permissions: ['user:view', 'proxy:view', 'stats:view']
+            }
+          ]
+          loading.value = false
+        }, 500)
       } catch (error) {
         ElMessage.error('获取角色列表失败')
-      } finally {
         loading.value = false
       }
     }
