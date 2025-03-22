@@ -28,7 +28,7 @@ export default defineConfig({
         manualChunks: {
           'element-plus': ['element-plus'],
           'echarts': ['echarts'],
-          'vendor': ['vue', 'vue-router', 'vuex']
+          'vendor': ['vue', 'vue-router', 'pinia']
         }
       }
     }

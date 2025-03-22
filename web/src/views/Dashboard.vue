@@ -1,162 +1,83 @@
 <template>
   <div class="dashboard-container">
-    <el-row :gutter="20">
-      <el-col :span="6">
-        <el-card class="stat-card">
-          <template #header>
-            <div class="card-header">
-              <span>总用户数</span>
-              <el-icon><User /></el-icon>
-            </div>
-          </template>
-          <div class="stat-value">{{ stats.totalUsers }}</div>
-        </el-card>
-      </el-col>
-      <el-col :span="6">
-        <el-card class="stat-card">
-          <template #header>
-            <div class="card-header">
-              <span>在线用户</span>
-              <el-icon><UserFilled /></el-icon>
-            </div>
-          </template>
-          <div class="stat-value">{{ stats.onlineUsers }}</div>
-        </el-card>
-      </el-col>
-      <el-col :span="6">
-        <el-card class="stat-card">
-          <template #header>
-            <div class="card-header">
-              <span>总流量</span>
-              <el-icon><DataLine /></el-icon>
-            </div>
-          </template>
-          <div class="stat-value">{{ formatBytes(stats.totalTraffic) }}</div>
-        </el-card>
-      </el-col>
-      <el-col :span="6">
-        <el-card class="stat-card">
-          <template #header>
-            <div class="card-header">
-              <span>系统负载</span>
-              <el-icon><Monitor /></el-icon>
-            </div>
-          </template>
-          <div class="stat-value">{{ stats.systemLoad }}</div>
-        </el-card>
-      </el-col>
-    </el-row>
-
-    <el-row :gutter="20" class="chart-row">
-      <el-col :span="12">
-        <el-card>
-          <template #header>
-            <div class="card-header">
-              <span>流量趋势</span>
-            </div>
-          </template>
-          <div class="chart-container">
-            <!-- TODO: 添加流量趋势图表 -->
-          </div>
-        </el-card>
-      </el-col>
-      <el-col :span="12">
-        <el-card>
-          <template #header>
-            <div class="card-header">
-              <span>协议分布</span>
-            </div>
-          </template>
-          <div class="chart-container">
-            <!-- TODO: 添加协议分布图表 -->
-          </div>
-        </el-card>
-      </el-col>
-    </el-row>
-
-    <el-card class="recent-activities">
-      <template #header>
-        <div class="card-header">
-          <span>最近活动</span>
+    <h1>系统控制面板</h1>
+    
+    <!-- 系统状态卡片 -->
+    <div class="status-cards">
+      <el-card class="status-card">
+        <h3>CPU 使用率</h3>
+        <div class="status-value">{{ cpuUsage }}%</div>
+      </el-card>
+      
+      <el-card class="status-card">
+        <h3>内存使用率</h3>
+        <div class="status-value">{{ memoryUsage }}%</div>
+      </el-card>
+      
+      <el-card class="status-card">
+        <h3>磁盘使用率</h3>
+        <div class="status-value">{{ diskUsage }}%</div>
+      </el-card>
+      
+      <el-card class="status-card">
+        <h3>活跃连接数</h3>
+        <div class="status-value">{{ activeConnections }}</div>
+      </el-card>
+    </div>
+    
+    <!-- 流量统计 -->
+    <el-card class="traffic-card">
+      <div class="card-header">
+        <h2>流量统计</h2>
+      </div>
+      <div class="traffic-info">
+        <div class="traffic-item">
+          <h3>今日上行流量</h3>
+          <div class="traffic-value">{{ formatTraffic(todayUpload) }}</div>
         </div>
-      </template>
-      <el-table :data="activities" style="width: 100%">
-        <el-table-column prop="time" label="时间" width="180" />
-        <el-table-column prop="user" label="用户" width="180" />
-        <el-table-column prop="action" label="操作" />
-        <el-table-column prop="status" label="状态" width="100">
-          <template #default="scope">
-            <el-tag :type="scope.row.status === 'success' ? 'success' : 'danger'">
-              {{ scope.row.status === 'success' ? '成功' : '失败' }}
-            </el-tag>
-          </template>
-        </el-table-column>
-      </el-table>
+        <div class="traffic-item">
+          <h3>今日下行流量</h3>
+          <div class="traffic-value">{{ formatTraffic(todayDownload) }}</div>
+        </div>
+        <div class="traffic-item">
+          <h3>本月上行流量</h3>
+          <div class="traffic-value">{{ formatTraffic(monthUpload) }}</div>
+        </div>
+        <div class="traffic-item">
+          <h3>本月下行流量</h3>
+          <div class="traffic-value">{{ formatTraffic(monthDownload) }}</div>
+        </div>
+      </div>
     </el-card>
   </div>
 </template>
 
 <script>
-import { ref, onMounted } from 'vue'
-import { User, UserFilled, DataLine, Monitor } from '@element-plus/icons-vue'
-
 export default {
   name: 'Dashboard',
-  components: {
-    User,
-    UserFilled,
-    DataLine,
-    Monitor
-  },
-  setup() {
-    const stats = ref({
-      totalUsers: 0,
-      onlineUsers: 0,
-      totalTraffic: 0,
-      systemLoad: 0
-    })
-
-    const activities = ref([])
-
-    const formatBytes = (bytes) => {
-      if (bytes === 0) return '0 B'
-      const k = 1024
-      const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
-      const i = Math.floor(Math.log(bytes) / Math.log(k))
-      return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
-    }
-
-    const fetchDashboardData = async () => {
-      try {
-        // TODO: 调用仪表盘数据 API
-        const response = await fetch('/api/dashboard/stats', {
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('token')}`
-          }
-        })
-        
-        if (!response.ok) {
-          throw new Error('获取数据失败')
-        }
-        
-        const data = await response.json()
-        stats.value = data.stats
-        activities.value = data.activities
-      } catch (error) {
-        console.error('Failed to fetch dashboard data:', error)
-      }
-    }
-
-    onMounted(() => {
-      fetchDashboardData()
-      // 每分钟更新一次数据
-      setInterval(fetchDashboardData, 60000)
-    })
-
+  data() {
     return {
-      stats,
-      activities,
-      formatBytes
+      cpuUsage: 15,
+      memoryUsage: 32,
+      diskUsage: 58,
+      activeConnections: 11,
+      todayUpload: 1024 * 1024 * 150, // 150MB
+      todayDownload: 1024 * 1024 * 350, // 350MB
+      monthUpload: 1024 * 1024 * 1024 * 5, // 5GB
+      monthDownload: 1024 * 1024 * 1024 * 15 // 15GB
+    }
+  },
+  methods: {
+    formatTraffic(bytes) {
+      if (bytes < 1024) {
+        return bytes + ' B'
+      } else if (bytes < 1024 * 1024) {
+        return (bytes / 1024).toFixed(2) + ' KB'
+      } else if (bytes < 1024 * 1024 * 1024) {
+        return (bytes / (1024 * 1024)).toFixed(2) + ' MB'
+      } else {
+        return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB'
+      }
     }
   }
 }
@@ -167,33 +88,66 @@ export default {
   padding: 20px;
 }
 
-.stat-card {
+.status-cards {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 20px;
+  margin-bottom: 20px;
+}
+
+.status-card {
+  text-align: center;
+}
+
+.status-value {
+  font-size: 24px;
+  font-weight: bold;
+  color: #409EFF;
+  margin-top: 10px;
+}
+
+.traffic-card {
   margin-bottom: 20px;
 }
 
 .card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+  margin-bottom: 20px;
 }
 
-.stat-value {
-  font-size: 24px;
-  font-weight: bold;
-  color: #409eff;
+.traffic-info {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 20px;
+}
+
+.traffic-item {
   text-align: center;
+}
+
+.traffic-value {
+  font-size: 18px;
+  font-weight: bold;
+  color: #67C23A;
   margin-top: 10px;
 }
 
-.chart-row {
-  margin-top: 20px;
+@media (max-width: 1200px) {
+  .status-cards {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  
+  .traffic-info {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 
-.chart-container {
-  height: 300px;
-}
-
-.recent-activities {
-  margin-top: 20px;
+@media (max-width: 768px) {
+  .status-cards {
+    grid-template-columns: 1fr;
+  }
+  
+  .traffic-info {
+    grid-template-columns: 1fr;
+  }
 }
 </style> 
