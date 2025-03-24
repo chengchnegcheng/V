@@ -9,12 +9,12 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-var monitorMgr *monitor.Manager
+var monitorInstance *monitor.Monitor
 
 // InitMonitorHandlers 初始化系统监控处理器
 func InitMonitorHandlers(log *logger.Logger) {
-	monitorMgr = monitor.New(log)
-	if err := monitorMgr.Start(); err != nil {
+	monitorInstance = monitor.NewMonitor(log)
+	if err := monitorInstance.Start(); err != nil {
 		log.Error("Failed to start monitor", logger.Fields{
 			"error": err.Error(),
 		})
@@ -24,13 +24,13 @@ func InitMonitorHandlers(log *logger.Logger) {
 // HandleGetSystemStats 处理获取系统状态的请求
 func HandleGetSystemStats(c *gin.Context) {
 	// 获取系统状态
-	stats, err := monitorMgr.GetStats()
-	if err != nil {
+	if monitorInstance == nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to get system stats",
+			"error": "Monitor not initialized",
 		})
 		return
 	}
 
+	stats := monitorInstance.GetStats()
 	c.JSON(http.StatusOK, stats)
 }

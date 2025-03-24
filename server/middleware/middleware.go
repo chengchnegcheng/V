@@ -1,7 +1,9 @@
 package middleware
 
 import (
+	"strings"
 	"time"
+	"v/auth"
 	"v/logger"
 
 	"github.com/gin-gonic/gin"
@@ -34,8 +36,8 @@ func RequestID() gin.HandlerFunc {
 	}
 }
 
-// Logger 日志中间件
-func Logger() gin.HandlerFunc {
+// RequestLogger 日志中间件
+func RequestLogger() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
 		path := c.Request.URL.Path
@@ -75,17 +77,48 @@ func AuthRequired() gin.HandlerFunc {
 			return
 		}
 
-		// TODO: 验证 token
-		// user, err := auth.ValidateToken(token)
-		// if err != nil {
-		// 	c.JSON(401, gin.H{
-		// 		"error": "Invalid token",
-		// 	})
-		// 	c.Abort()
-		// 	return
-		// }
+		// Extract token from Bearer format
+		if strings.HasPrefix(token, "Bearer ") {
+			token = token[7:] // Remove "Bearer " prefix
+		}
 
-		// c.Set("user", user)
+		// Validate token
+		claims, err := auth.ValidateToken(token)
+		if err != nil {
+			c.JSON(401, gin.H{
+				"error": "Invalid token",
+			})
+			c.Abort()
+			return
+		}
+
+		// Store user information in context
+		c.Set("user_id", claims.UserID)
+		c.Set("username", claims.Username)
+		c.Set("is_admin", claims.IsAdmin)
+		c.Next()
+	}
+}
+
+// AdminRequired 管理员认证中间件
+func AdminRequired() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// First ensure the user is authenticated
+		AuthRequired()(c)
+		if c.IsAborted() {
+			return
+		}
+
+		// Check if user is admin
+		isAdmin, exists := c.Get("is_admin")
+		if !exists || !isAdmin.(bool) {
+			c.JSON(403, gin.H{
+				"error": "Admin privileges required",
+			})
+			c.Abort()
+			return
+		}
+
 		c.Next()
 	}
 }

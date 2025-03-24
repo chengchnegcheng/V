@@ -1,239 +1,154 @@
-# V - 多协议代理管理面板
+# V - 高性能代理服务器
 
-<div align="center">
-  
-![License](https://img.shields.io/badge/license-MIT-blue.svg)
-![Go Version](https://img.shields.io/badge/Go-1.16+-00ADD8.svg)
-![Vue Version](https://img.shields.io/badge/Vue-3.x-4FC08D.svg)
-![Platform](https://img.shields.io/badge/platform-Linux%20|%20Windows%20|%20macOS-lightgrey.svg)
+V是一个用Go语言编写的高性能代理服务器，支持多种代理协议，包括Shadowsocks、VMess、Trojan等。它提供了完整的用户管理、流量统计、证书管理等功能。
 
-</div>
+## 功能特点
 
-一个现代化的多协议代理管理面板，基于 Go 和 Vue 3 开发，提供强大的用户管理、流量控制和实时监控功能。
+- 多协议支持
+  - Shadowsocks
+  - VMess
+  - Trojan
+  - 更多协议支持计划中
 
-## 📋 核心功能
+- 用户管理
+  - 用户认证和授权
+  - 流量限制和统计
+  - 用户状态监控
+  - 多级用户权限
 
-- **多协议支持**：集成 VMess、VLESS、Trojan、Shadowsocks 等多种协议
-- **用户管理系统**：多用户支持与精细化权限控制
-- **实时监控**：CPU、内存、网络等系统资源使用情况可视化展示
-- **流量控制**：精确统计、限制和可视化用户流量
-- **证书管理**：自动申请与管理 SSL 证书，确保连接安全
-- **数据备份**：支持数据库备份和恢复，保障数据安全
-- **现代界面**：基于 Element Plus 的响应式设计，操作便捷直观
+- 流量管理
+  - 实时流量统计
+  - 每日流量统计
+  - 流量限制和警告
+  - 协议级别的流量统计
 
-## 🚀 快速安装
+- 证书管理
+  - 自动SSL证书申请和更新
+  - 多域名证书支持
+  - 证书验证和状态监控
 
-### 系统要求
+- 系统管理
+  - 完整的日志系统
+  - 系统状态监控
+  - 配置管理
+  - 通知系统
 
-| 组件 | 最低要求 | 推荐配置 |
-|------|---------|---------|
-| 操作系统 | Linux / macOS / Windows | Ubuntu 20.04+ |
-| CPU | 1核 | 2核+ |
-| 内存 | 1GB | 2GB+ |
-| 存储 | 10GB | 20GB+ |
-| Go 环境 | 1.16+ | 1.18+ |
-| Node.js* | 16+ | 18+ |
+## 系统要求
 
-*仅前端开发需要
+- Go 1.16或更高版本
+- SQLite3
+- 支持的操作系统：
+  - Linux
+  - Windows
+  - macOS
 
-### Windows 安装
+## 安装
 
-1. 从 [Releases 页面](https://github.com/chengchnegcheng/V/releases/latest) 下载最新版本的 `v.exe`
-2. 双击运行 `v.exe` 文件
-3. 通过浏览器访问 `http://localhost:8080`
-
-### Linux/macOS 安装
-
+1. 克隆仓库：
 ```bash
-# 下载最新版本
-wget https://github.com/chengchnegcheng/V/releases/latest/download/v-linux-amd64.tar.gz
-
-# 解压文件
-tar -zxvf v-linux-amd64.tar.gz
-
-# 进入目录并运行
-cd V && ./v
+git clone https://github.com/yourusername/v.git
+cd v
 ```
 
-### Docker 安装
-
+2. 安装依赖：
 ```bash
-# 拉取镜像
-docker pull chengcheng/v-panel:latest
-
-# 运行容器
-docker run -d --name v-panel \
-  -p 8080:8080 \
-  -v $PWD/data:/app/data \
-  --restart unless-stopped \
-  chengcheng/v-panel:latest
+go mod download
 ```
 
-## 📝 使用指南
-
-1. 安装并启动程序后，访问以下地址：
-   - Web 管理面板：`http://[服务器IP]:8080`
-   - 开发模式前端：`http://localhost:3000`
-
-2. 使用默认账号登录：
-   - 用户名：`admin`
-   - 密码：`admin`
-
-3. **重要**：首次登录后请立即修改默认密码以确保安全
-
-4. 通过面板可以：
-   - 创建和管理代理协议
-   - 添加和管理用户账号
-   - 监控系统资源和流量使用情况
-   - 管理 SSL 证书
-   - 配置备份与恢复
-
-## 🖥️ 界面预览
-
-<div align="center">
-  <img src="docs/screenshots/dashboard.png" alt="仪表盘" width="45%">
-  <img src="docs/screenshots/traffic.png" alt="流量监控" width="45%">
-</div>
-
-## ⚙️ 高级配置
-
-配置文件位于 `config/settings.json`，主要配置项包括：
-
-| 配置项 | 说明 | 默认值 |
-|-------|------|--------|
-| server.port | HTTP 服务端口 | 8080 |
-| server.address | 监听地址 | 0.0.0.0 |
-| database.type | 数据库类型 | sqlite |
-| database.path | 数据库文件路径 | ./data/v.db |
-| log.level | 日志级别 | info |
-| ssl.auto | 自动申请证书 | true |
-| admin.username | 管理员用户名 | admin |
-
-## 🛠️ 开发指南
-
-### 后端开发
-
+3. 编译：
 ```bash
-# 克隆仓库
-git clone https://github.com/chengchnegcheng/V.git
-
-# 进入项目目录
-cd V
-
-# 编译后端
 go build -o v
+```
 
-# 运行
+4. 运行：
+```bash
 ./v
 ```
 
-### 前端开发
+## 配置
 
-```bash
-# 进入前端目录
-cd web
+配置文件位于`config/config.yaml`，包含以下主要配置项：
 
-# 安装依赖
-npm install
+- 服务器设置
+  - 监听地址和端口
+  - TLS配置
+  - 协议设置
 
-# 开发模式运行
-npm run dev
+- 数据库设置
+  - 数据库类型
+  - 连接参数
 
-# 构建生产版本
-npm run build
+- 用户设置
+  - 默认流量限制
+  - 用户权限
+
+- 通知设置
+  - 邮件通知
+  - 其他通知方式
+
+## 目录结构
+
+```
+v/
+├── cmd/            # 命令行入口
+├── config/         # 配置文件和配置管理
+├── database/       # 数据库相关代码
+├── logger/         # 日志系统
+├── model/          # 数据模型
+├── notification/   # 通知系统
+├── proxy/          # 代理协议实现
+├── server/         # HTTP服务器和API
+├── settings/       # 设置管理
+├── ssl/            # SSL证书管理
+├── stats/          # 流量统计
+└── utils/          # 工具函数
 ```
 
-## 🔧 技术栈
+## API文档
 
-### 后端
-- **语言**：Go
-- **数据库**：SQLite
-- **API**：RESTful
+### 用户管理API
 
-### 前端
-- **框架**：Vue 3
-- **状态管理**：Pinia
-- **UI库**：Element Plus
-- **图表**：ECharts
-- **API请求**：Axios
+- `POST /api/v1/users` - 创建用户
+- `GET /api/v1/users` - 获取用户列表
+- `GET /api/v1/users/:id` - 获取用户详情
+- `PUT /api/v1/users/:id` - 更新用户
+- `DELETE /api/v1/users/:id` - 删除用户
 
-## ❓ 常见问题解答
+### 流量统计API
 
-<details>
-<summary><b>如何更改默认端口？</b></summary>
-<p>启动时使用 <code>--port 新端口号</code> 参数，或修改配置文件中的 server.port 值。</p>
-</details>
+- `GET /api/v1/stats/traffic/:user_id` - 获取用户流量统计
+- `GET /api/v1/stats/daily/:user_id` - 获取用户每日流量统计
+- `GET /api/v1/stats/protocol/:protocol_id` - 获取协议流量统计
 
-<details>
-<summary><b>如何配置自动启动？</b></summary>
+### 证书管理API
 
-**Linux (systemd)**:
-```bash
-# 创建服务文件
-cat > /etc/systemd/system/v-panel.service << EOF
-[Unit]
-Description=V Panel Service
-After=network.target
+- `POST /api/v1/certificates` - 创建证书
+- `GET /api/v1/certificates` - 获取证书列表
+- `GET /api/v1/certificates/:id` - 获取证书详情
+- `DELETE /api/v1/certificates/:id` - 删除证书
 
-[Service]
-Type=simple
-User=root
-WorkingDirectory=/path/to/V
-ExecStart=/path/to/V/v
-Restart=on-failure
+## 开发
 
-[Install]
-WantedBy=multi-user.target
-EOF
+### 添加新协议
 
-# 启用并启动服务
-systemctl daemon-reload
-systemctl enable v-panel
-systemctl start v-panel
-```
+1. 在`proxy/protocols`目录下创建新的协议包
+2. 实现`Protocol`接口
+3. 在`proxy/proxy.go`中注册新协议
 
-**Windows**:
-- 使用任务计划程序创建开机自启动任务
-</details>
+### 添加新功能
 
-<details>
-<summary><b>如何备份数据？</b></summary>
-<p>
-1. 通过 Web 界面：导航至"系统管理" > "备份"页面，点击"创建备份"按钮<br>
-2. 手动备份：复制 <code>data/v.db</code> 文件到安全位置
-</p>
-</details>
+1. 在相应的包中实现功能
+2. 添加必要的API端点
+3. 更新配置和文档
 
-<details>
-<summary><b>申请 SSL 证书失败怎么办？</b></summary>
-<p>
-1. 确保域名正确解析到服务器IP<br>
-2. 检查80/443端口是否开放<br>
-3. 查看日志文件分析错误原因<br>
-4. 尝试手动上传已有证书
-</p>
-</details>
+## 贡献
 
-## 📊 开发状态
+欢迎提交Issue和Pull Request。在提交代码前，请确保：
 
-| 功能 | 状态 | 备注 |
-|------|------|------|
-| 核心功能 | ✅ 已完成 | 所有基础功能可用 |
-| 多协议支持 | ✅ 已完成 | 已支持主流协议 |
-| 状态管理 | ✅ 已完成 | 已从Vuex迁移到Pinia |
+1. 代码符合Go代码规范
+2. 添加了必要的测试
+3. 更新了相关文档
 
-## 🤝 贡献指南
+## 许可证
 
-欢迎提交问题报告和功能请求！如果您想贡献代码：
-
-
-## 📚 相关文档
-
-- [完整API文档](docs/api/README.md)
-- [故障排除指南](docs/troubleshooting.md)
-- [SSL证书管理](docs/ssl_guide.md)
-- [安全最佳实践](docs/security.md)
-
-## 📜 许可证
-
-本项目采用 MIT 许可证 - 详见 [LICENSE](LICENSE) 文件 
+MIT License 

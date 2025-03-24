@@ -14,16 +14,16 @@ import (
 	"github.com/go-acme/lego/v4/registration"
 )
 
-// Manager handles SSL certificate operations
-type Manager struct {
+// ACMEManager handles Let's Encrypt SSL certificate operations
+type ACMEManager struct {
 	email    string
 	client   *lego.Client
 	account  *registration.Resource
 	renewals map[string]*time.Timer
 }
 
-// Certificate represents an SSL certificate
-type Certificate struct {
+// ACMECertificate represents a Let's Encrypt SSL certificate
+type ACMECertificate struct {
 	ID          int64
 	Domain      string
 	Certificate string
@@ -32,12 +32,14 @@ type Certificate struct {
 	ExpireAt    time.Time
 }
 
-// NewManager creates a new SSL certificate manager
-func NewManager(email string) (*Manager, error) {
+// NewACMEManager creates a new Let's Encrypt certificate manager
+func NewACMEManager(email string) (*ACMEManager, error) {
 	// Create user
-	user := &User{
-		Email: email,
+	user, err := NewUser()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create user: %v", err)
 	}
+	user.Email = email
 
 	// Create lego config
 	config := lego.NewConfig(user)
@@ -63,7 +65,7 @@ func NewManager(email string) (*Manager, error) {
 		return nil, fmt.Errorf("failed to register account: %v", err)
 	}
 
-	return &Manager{
+	return &ACMEManager{
 		email:    email,
 		client:   client,
 		account:  account,
@@ -72,7 +74,7 @@ func NewManager(email string) (*Manager, error) {
 }
 
 // ObtainCertificate obtains a new SSL certificate for the given domain
-func (m *Manager) ObtainCertificate(domain string) error {
+func (m *ACMEManager) ObtainCertificate(domain string) error {
 	// Request certificate
 	request := certificate.ObtainRequest{
 		Domains: []string{domain},
@@ -110,9 +112,9 @@ func (m *Manager) ObtainCertificate(domain string) error {
 }
 
 // RenewCertificate renews an existing SSL certificate
-func (m *Manager) RenewCertificate(domain string) error {
+func (m *ACMEManager) RenewCertificate(domain string) error {
 	// Get existing certificate
-	var cert Certificate
+	var cert ACMECertificate
 	err := database.DB.QueryRow(`
 		SELECT id, certificate, private_key, expire_at
 		FROM ssl_certificates
@@ -176,7 +178,7 @@ func (m *Manager) RenewCertificate(domain string) error {
 }
 
 // scheduleRenewal schedules automatic renewal of a certificate
-func (m *Manager) scheduleRenewal(domain string, expiry time.Time) {
+func (m *ACMEManager) scheduleRenewal(domain string, expiry time.Time) {
 	// Cancel existing renewal timer if any
 	if timer, exists := m.renewals[domain]; exists {
 		timer.Stop()
@@ -198,8 +200,8 @@ func (m *Manager) scheduleRenewal(domain string, expiry time.Time) {
 }
 
 // GetCertificate retrieves a certificate from the database
-func (m *Manager) GetCertificate(domain string) (*Certificate, error) {
-	var cert Certificate
+func (m *ACMEManager) GetCertificate(domain string) (*ACMECertificate, error) {
+	var cert ACMECertificate
 	err := database.DB.QueryRow(`
 		SELECT id, domain, certificate, private_key, created_at, expire_at
 		FROM ssl_certificates
@@ -219,7 +221,7 @@ func (m *Manager) GetCertificate(domain string) (*Certificate, error) {
 }
 
 // ListCertificates returns all certificates
-func (m *Manager) ListCertificates() ([]Certificate, error) {
+func (m *ACMEManager) ListCertificates() ([]ACMECertificate, error) {
 	rows, err := database.DB.Query(`
 		SELECT id, domain, certificate, private_key, created_at, expire_at
 		FROM ssl_certificates
@@ -230,9 +232,9 @@ func (m *Manager) ListCertificates() ([]Certificate, error) {
 	}
 	defer rows.Close()
 
-	var certs []Certificate
+	var certs []ACMECertificate
 	for rows.Next() {
-		var cert Certificate
+		var cert ACMECertificate
 		err := rows.Scan(
 			&cert.ID,
 			&cert.Domain,
@@ -250,7 +252,7 @@ func (m *Manager) ListCertificates() ([]Certificate, error) {
 }
 
 // DeleteCertificate deletes a certificate
-func (m *Manager) DeleteCertificate(domain string) error {
+func (m *ACMEManager) DeleteCertificate(domain string) error {
 	// Cancel renewal timer if exists
 	if timer, exists := m.renewals[domain]; exists {
 		timer.Stop()
@@ -268,6 +270,5 @@ func (m *Manager) DeleteCertificate(domain string) error {
 		return fmt.Errorf("certificate not found")
 	}
 
-	log.Printf("Certificate deleted for domain: %s", domain)
 	return nil
 }

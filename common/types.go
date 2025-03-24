@@ -162,8 +162,8 @@ type HTTPConfig struct {
 	Password string `json:"password,omitempty"`
 }
 
-// ProxyServer 代理服务器
-type ProxyServer struct {
+// ProxyServerInfo 代理服务器
+type ProxyServerInfo struct {
 	ID           int64                  `json:"id"`
 	UserID       int64                  `json:"user_id"`
 	Protocol     string                 `json:"protocol"`

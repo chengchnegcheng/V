@@ -8,17 +8,36 @@ export default defineConfig({
     alias: {
       '@': resolve(__dirname, 'src'),
     },
+    extensions: ['.js', '.ts', '.vue', '.json'],
   },
   server: {
     port: 3000,
     open: true,
+    cors: true,
+    hmr: {
+      overlay: false,
+    },
     proxy: {
       '/api': {
-        target: 'http://localhost:9000',
+        target: 'http://127.0.0.1:9000',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api/, ''),
+        secure: false,
+        configure: (proxy, options) => {
+          proxy.on('error', (err, req, res) => {
+            console.error('proxy error', err);
+          });
+          proxy.on('proxyReq', (proxyReq, req, res) => {
+            console.log('发送请求到:', options.target + proxyReq.path);
+          });
+          proxy.on('proxyRes', (proxyRes, req, res) => {
+            console.log('收到响应:', proxyRes.statusCode, req.url);
+          });
+        }
       },
     },
+  },
+  optimizeDeps: {
+    include: ['vue', 'vue-router', 'pinia', 'element-plus', 'axios', 'qrcode'],
   },
   build: {
     outDir: 'dist',

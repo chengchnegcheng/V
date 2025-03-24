@@ -6,10 +6,11 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"io"
+	"net"
 	"time"
 
+	"v/common"
 	"v/logger"
-	"v/proxy"
 )
 
 // Config represents VMess configuration
@@ -23,58 +24,75 @@ type Config struct {
 type Server struct {
 	log    *logger.Logger
 	config *Config
-	proxy  *proxy.Proxy
+	proxy  *common.ProxyInstance
 	aead   cipher.AEAD
 	block  cipher.Block
 }
 
 // New creates a new VMess server
-func New(log *logger.Logger, proxy *proxy.Proxy) (*Server, error) {
-	config, ok := proxy.Config.Settings["vmess"].(map[string]interface{})
-	if !ok {
-		return nil, fmt.Errorf("invalid vmess config")
+func New(log *logger.Logger, proxy *common.ProxyInstance) (*Server, error) {
+	var vmessConfig map[string]interface{}
+
+	// Handle different types of settings
+	settingsData := proxy.Settings["vmess"]
+
+	switch v := settingsData.(type) {
+	case map[string]interface{}:
+		vmessConfig = v
+	default:
+		return nil, fmt.Errorf("invalid vmess config type: %T", settingsData)
 	}
 
-	id, ok := config["id"].(string)
+	id, ok := vmessConfig["id"].(string)
 	if !ok {
 		return nil, fmt.Errorf("missing vmess id")
 	}
 
-	alterID, ok := config["alter_id"].(int)
-	if !ok {
-		alterID = 0
+	// Extract alterID with type checking
+	var alterID int
+	switch v := vmessConfig["alter_id"].(type) {
+	case int:
+		alterID = v
+	case float64:
+		alterID = int(v)
+	default:
+		alterID = 0 // Default value
 	}
 
-	security, ok := config["security"].(string)
+	security, ok := vmessConfig["security"].(string)
 	if !ok {
 		security = "auto"
 	}
 
-	vmessConfig := &Config{
+	// Create config struct
+	config := &Config{
 		ID:       id,
 		AlterID:  alterID,
 		Security: security,
 	}
 
-	// Create cipher
+	// Use AES-128 for encryption
 	key := sha256.Sum256([]byte(id))
-	block, err := aes.NewCipher(key[:])
+	block, err := aes.NewCipher(key[:16])
 	if err != nil {
 		return nil, fmt.Errorf("failed to create cipher: %v", err)
 	}
 
+	// Create AEAD instance
 	aead, err := cipher.NewGCM(block)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create aead: %v", err)
+		return nil, fmt.Errorf("failed to create AEAD: %v", err)
 	}
 
-	return &Server{
+	s := &Server{
 		log:    log,
-		config: vmessConfig,
+		config: config,
 		proxy:  proxy,
-		aead:   aead,
 		block:  block,
-	}, nil
+		aead:   aead,
+	}
+
+	return s, nil
 }
 
 // Start starts the VMess server
@@ -201,14 +219,65 @@ func (s *Server) validateRequest(header *Header) error {
 
 // handleTCP handles TCP connection
 func (s *Server) handleTCP(conn io.ReadWriteCloser, header *Header) error {
-	// TODO: Implement TCP handling logic
+	// Connect to target address
+	target, err := net.Dial("tcp", fmt.Sprintf("%s:%d", header.Address, header.Port))
+	if err != nil {
+		return fmt.Errorf("failed to connect to target: %v", err)
+	}
+	defer target.Close()
+
+	// Start proxying data
+	go func() {
+		io.Copy(target, conn)
+	}()
+	io.Copy(conn, target)
 
 	return nil
 }
 
 // handleUDP handles UDP connection
 func (s *Server) handleUDP(conn io.ReadWriteCloser, header *Header) error {
-	// TODO: Implement UDP handling logic
+	// Resolve UDP address
+	udpAddr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", header.Address, header.Port))
+	if err != nil {
+		return fmt.Errorf("failed to resolve UDP address: %v", err)
+	}
+
+	// Create UDP connection
+	udpConn, err := net.DialUDP("udp", nil, udpAddr)
+	if err != nil {
+		return fmt.Errorf("failed to create UDP connection: %v", err)
+	}
+	defer udpConn.Close()
+
+	// Create buffer for UDP packets
+	buf := make([]byte, 65536)
+
+	// Start proxying UDP data
+	// This is a simplified implementation
+	go func() {
+		for {
+			n, err := udpConn.Read(buf)
+			if err != nil {
+				break
+			}
+			_, err = conn.Write(buf[:n])
+			if err != nil {
+				break
+			}
+		}
+	}()
+
+	for {
+		n, err := conn.Read(buf)
+		if err != nil {
+			break
+		}
+		_, err = udpConn.Write(buf[:n])
+		if err != nil {
+			break
+		}
+	}
 
 	return nil
 }

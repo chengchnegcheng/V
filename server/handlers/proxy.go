@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"v/common"
 	"v/database"
 	"v/proxy"
 
@@ -100,33 +101,29 @@ func HandleListProxyConfigs(c *gin.Context) {
 	c.JSON(http.StatusOK, configs)
 }
 
-// HandleCreateProxyConfig handles POST /api/proxy
-func HandleCreateProxyConfig(c *gin.Context) {
+// HandleCreateProxy handles creation of new proxy configuration
+func HandleCreateProxy(c *gin.Context) {
 	userID := c.GetInt64("user_id")
 
 	var config ProxyConfig
 	if err := c.ShouldBindJSON(&config); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
 		return
 	}
 
-	// Validate protocol
-	switch config.Protocol {
-	case "vmess", "vless", "trojan", "shadowsocks":
-		// Valid protocol
-	default:
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid protocol"})
-		return
+	// Generate settings JSON
+	var settingsJSON []byte
+	var err error
+
+	if config.Settings != nil {
+		settingsJSON, err = json.Marshal(config.Settings)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to serialize settings"})
+			return
+		}
 	}
 
-	// Convert settings to JSON
-	settingsJSON, err := json.Marshal(config.Settings)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid settings format"})
-		return
-	}
-
-	// Insert proxy config
+	// Insert into database
 	result, err := database.DB.Exec(`
 		INSERT INTO proxy_configs (user_id, protocol, settings, enabled, created_at)
 		VALUES (?, ?, ?, 1, CURRENT_TIMESTAMP)
@@ -139,7 +136,14 @@ func HandleCreateProxyConfig(c *gin.Context) {
 	configID, _ := result.LastInsertId()
 
 	// Start proxy server
-	if err := proxy.DefaultService.StartProxy(configID, userID, config.Protocol, config.Settings); err != nil {
+	proxyConfig := &common.ProxyConfig{
+		ID:       configID,
+		UserID:   userID,
+		Type:     string(config.Protocol),
+		Settings: string(settingsJSON),
+		Enabled:  true,
+	}
+	if err := proxy.DefaultService.StartProxy(proxyConfig); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to start proxy server: " + err.Error()})
 		return
 	}
@@ -221,26 +225,16 @@ func HandleUpdateProxyConfig(c *gin.Context) {
 		return
 	}
 
-	var config ProxyConfig
-	if err := c.ShouldBindJSON(&config); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
+	// Check if config exists and belongs to the user
+	var existingConfig struct {
+		UserID   int64
+		Protocol string
+		Settings string
+		Enabled  bool
 	}
-
-	// Check if the proxy config exists and belongs to the user
-	var existingConfig ProxyConfig
-	var query string
-	var args []interface{}
-
-	if isAdmin {
-		query = "SELECT user_id FROM proxy_configs WHERE id = ?"
-		args = []interface{}{configID}
-	} else {
-		query = "SELECT user_id FROM proxy_configs WHERE id = ? AND user_id = ?"
-		args = []interface{}{configID, userID}
-	}
-
-	err = database.DB.QueryRow(query, args...).Scan(&existingConfig.UserID)
+	err = database.DB.QueryRow("SELECT user_id, protocol, settings, enabled FROM proxy_configs WHERE id = ?", configID).Scan(
+		&existingConfig.UserID, &existingConfig.Protocol, &existingConfig.Settings, &existingConfig.Enabled,
+	)
 	if err == sql.ErrNoRows {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Proxy config not found"})
 		return
@@ -249,17 +243,28 @@ func HandleUpdateProxyConfig(c *gin.Context) {
 		return
 	}
 
-	// Convert settings to JSON
-	settingsJSON, err := json.Marshal(config.Settings)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid settings format"})
+	if existingConfig.UserID != userID && !isAdmin {
+		c.JSON(http.StatusForbidden, gin.H{"error": "You don't have permission to update this config"})
 		return
 	}
 
-	// Update proxy config
+	var config ProxyConfig
+	if err := c.ShouldBindJSON(&config); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		return
+	}
+
+	// Generate settings JSON
+	settingsJSON, err := json.Marshal(config.Settings)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to serialize settings"})
+		return
+	}
+
+	// Update in database
 	result, err := database.DB.Exec(`
-		UPDATE proxy_configs
-		SET protocol = ?, settings = ?, enabled = ?
+		UPDATE proxy_configs 
+		SET protocol = ?, settings = ?, enabled = ?, updated_at = CURRENT_TIMESTAMP
 		WHERE id = ?
 	`, config.Protocol, string(settingsJSON), config.Enabled, configID)
 	if err != nil {
@@ -279,7 +284,14 @@ func HandleUpdateProxyConfig(c *gin.Context) {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to stop proxy server: " + err.Error()})
 			return
 		}
-		if err := proxy.DefaultService.StartProxy(configID, existingConfig.UserID, config.Protocol, config.Settings); err != nil {
+		proxyConfig := &common.ProxyConfig{
+			ID:       configID,
+			UserID:   existingConfig.UserID,
+			Type:     string(config.Protocol),
+			Settings: string(settingsJSON),
+			Enabled:  true,
+		}
+		if err := proxy.DefaultService.StartProxy(proxyConfig); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to start proxy server: " + err.Error()})
 			return
 		}

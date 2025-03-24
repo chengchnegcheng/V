@@ -19,7 +19,7 @@ type VMessServer struct {
 }
 
 // NewVMessServer creates a new VMess server
-func NewVMessServer(logger *logger.Logger, config *common.VMessConfig, proxy *common.ProxyServer) (*VMessServer, error) {
+func NewVMessServer(logger *logger.Logger, config *common.VMessConfig, proxy *common.ProxyInstance) (*VMessServer, error) {
 	server := &VMessServer{
 		BaseServer: NewBaseServer(logger, proxy),
 		config:     config,
@@ -27,19 +27,34 @@ func NewVMessServer(logger *logger.Logger, config *common.VMessConfig, proxy *co
 
 	// Setup TLS if enabled
 	if config.Security == "tls" {
-		proxyConfig := proxy.Settings["tls"].(map[string]interface{})
-		if proxyConfig != nil {
-			cert, err := tls.LoadX509KeyPair(
-				proxyConfig["cert_file"].(string),
-				proxyConfig["key_file"].(string),
-			)
+		var tlsSettings map[string]interface{}
+
+		if settingsData, ok := proxy.Settings["tls"]; ok {
+			if mapData, ok := settingsData.(map[string]interface{}); ok {
+				tlsSettings = mapData
+			}
+		}
+
+		if tlsSettings != nil {
+			certFile, ok1 := tlsSettings["cert_file"].(string)
+			keyFile, ok2 := tlsSettings["key_file"].(string)
+			serverName, ok3 := tlsSettings["server_name"].(string)
+
+			if !ok1 || !ok2 {
+				return nil, fmt.Errorf("missing TLS certificate files in settings")
+			}
+
+			cert, err := tls.LoadX509KeyPair(certFile, keyFile)
 			if err != nil {
 				return nil, fmt.Errorf("failed to load TLS certificate: %v", err)
 			}
 
 			server.tlsConfig = &tls.Config{
 				Certificates: []tls.Certificate{cert},
-				ServerName:   proxyConfig["server_name"].(string),
+			}
+
+			if ok3 {
+				server.tlsConfig.ServerName = serverName
 			}
 		}
 	}
@@ -221,4 +236,60 @@ func (s *VMessServer) readHeader(conn net.Conn) (*VMessHeader, error) {
 		Address:     fmt.Sprintf("%s:%d", addr, port),
 		AddressType: addrType[0],
 	}, nil
+}
+
+// CopyIO copies data between two io.ReadWriteCloser
+func CopyIO(dst io.Writer, src io.Reader) error {
+	_, err := io.Copy(dst, src)
+	return err
+}
+
+// HandleConnection handles a single connection
+func (s *VMessServer) HandleConnection(conn io.ReadWriteCloser) error {
+	defer conn.Close()
+
+	// Convert to net.Conn
+	netConn, ok := conn.(net.Conn)
+	if !ok {
+		return fmt.Errorf("connection is not a net.Conn")
+	}
+
+	// Read VMess header
+	header, err := s.readHeader(netConn)
+	if err != nil {
+		s.Logger.Error("Failed to read header: %v", err)
+		return err
+	}
+
+	// Verify user ID
+	if header.ID != s.config.ID {
+		s.Logger.Error("Invalid user ID: %s", header.ID)
+		return fmt.Errorf("invalid user ID")
+	}
+
+	// Connect to target
+	target, err := net.Dial("tcp", header.Address)
+	if err != nil {
+		s.Logger.Error("Failed to connect to target: %v", err)
+		return err
+	}
+	defer target.Close()
+
+	// Start proxying
+	errChan := make(chan error, 2)
+	go func() {
+		_, err := io.Copy(target, conn)
+		errChan <- err
+	}()
+	go func() {
+		_, err := io.Copy(conn, target)
+		errChan <- err
+	}()
+
+	// Wait for either direction to finish
+	err = <-errChan
+	if err != nil {
+		s.Logger.Error("Copy error: %v", err)
+	}
+	return err
 }

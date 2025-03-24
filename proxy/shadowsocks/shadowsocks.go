@@ -27,7 +27,7 @@ type Config struct {
 // Server represents a Shadowsocks server
 type Server struct {
 	logger    *logger.Logger
-	proxy     *common.ProxyServer
+	proxy     *common.ProxyInstance
 	config    *common.ShadowsocksConfig
 	tlsConfig *tls.Config
 	block     cipher.Block
@@ -35,10 +35,28 @@ type Server struct {
 }
 
 // New creates a new Shadowsocks server
-func New(logger *logger.Logger, proxy *common.ProxyServer) (*Server, error) {
+func New(logger *logger.Logger, proxy *common.ProxyInstance) (*Server, error) {
 	// Parse config
 	var config common.ShadowsocksConfig
-	if err := json.Unmarshal([]byte(proxy.Settings["shadowsocks"].(string)), &config); err != nil {
+
+	// Handle different types of settings
+	var settingsData interface{} = proxy.Settings["shadowsocks"]
+	var err error
+	var settingsBytes []byte
+
+	switch v := settingsData.(type) {
+	case string:
+		settingsBytes = []byte(v)
+	case map[string]interface{}:
+		settingsBytes, err = json.Marshal(v)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal settings: %v", err)
+		}
+	default:
+		return nil, fmt.Errorf("invalid settings type: %T", settingsData)
+	}
+
+	if err := json.Unmarshal(settingsBytes, &config); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config: %v", err)
 	}
 

@@ -40,12 +40,12 @@ func (m *Manager) Create(username, email, password string) (*model.User, error) 
 
 	// Check if username exists
 	if _, err := m.GetByUsername(username); err == nil {
-		return nil, errors.New(errors.ErrBadRequest, "Username already exists", nil)
+		return nil, errors.WithMessage(errors.ErrBadRequest, "Username already exists")
 	}
 
 	// Check if email exists
 	if _, err := m.GetByEmail(email); err == nil {
-		return nil, errors.New(errors.ErrBadRequest, "Email already exists", nil)
+		return nil, errors.WithMessage(errors.ErrBadRequest, "Email already exists")
 	}
 
 	// Generate salt
@@ -95,7 +95,7 @@ func (m *Manager) Get(id int64) (*model.User, error) {
 		return nil, err
 	}
 	if user == nil {
-		return nil, errors.New(errors.ErrNotFound, "User not found", nil)
+		return nil, errors.WithMessage(errors.ErrNotFound, "User not found")
 	}
 	return user, nil
 }
@@ -107,7 +107,7 @@ func (m *Manager) GetByUsername(username string) (*model.User, error) {
 		return nil, err
 	}
 	if user == nil {
-		return nil, errors.New(errors.ErrNotFound, "User not found", nil)
+		return nil, errors.WithMessage(errors.ErrNotFound, "User not found")
 	}
 	return user, nil
 }
@@ -119,7 +119,7 @@ func (m *Manager) GetByEmail(email string) (*model.User, error) {
 		return nil, err
 	}
 	if user == nil {
-		return nil, errors.New(errors.ErrNotFound, "User not found", nil)
+		return nil, errors.WithMessage(errors.ErrNotFound, "User not found")
 	}
 	return user, nil
 }
@@ -133,12 +133,12 @@ func (m *Manager) Update(user *model.User) error {
 
 	// Check if username exists (excluding current user)
 	if existingUser, err := m.GetByUsername(user.Username); err == nil && existingUser.ID != user.ID {
-		return errors.New(errors.ErrBadRequest, "Username already exists", nil)
+		return errors.WithMessage(errors.ErrBadRequest, "Username already exists")
 	}
 
 	// Check if email exists (excluding current user)
 	if existingUser, err := m.GetByEmail(user.Email); err == nil && existingUser.ID != user.ID {
-		return errors.New(errors.ErrBadRequest, "Email already exists", nil)
+		return errors.WithMessage(errors.ErrBadRequest, "Email already exists")
 	}
 
 	// Update timestamp
@@ -181,7 +181,7 @@ func (m *Manager) Authenticate(username, password string) (*model.User, error) {
 
 	// Check if user is locked
 	if user.LockedUntil != nil && time.Now().Before(*user.LockedUntil) {
-		return nil, errors.New(errors.ErrUnauthorized, "Account is locked", nil)
+		return nil, errors.WithMessage(errors.ErrUnauthorized, "Account is locked")
 	}
 
 	// Verify password
@@ -198,7 +198,7 @@ func (m *Manager) Authenticate(username, password string) (*model.User, error) {
 				"error": err,
 			})
 		}
-		return nil, errors.New(errors.ErrUnauthorized, "Invalid password", nil)
+		return nil, errors.WithMessage(errors.ErrUnauthorized, "Invalid password")
 	}
 
 	// Reset login attempts
@@ -225,7 +225,7 @@ func (m *Manager) ChangePassword(id int64, oldPassword, newPassword string) erro
 
 	// Verify old password
 	if err := m.verifyPassword(oldPassword, user.Password, user.Salt); err != nil {
-		return errors.New(errors.ErrUnauthorized, "Invalid old password", nil)
+		return errors.WithMessage(errors.ErrUnauthorized, "Invalid old password")
 	}
 
 	// Generate new salt
@@ -342,17 +342,17 @@ func (m *Manager) validateInput(username, email, password string) error {
 
 	// Validate username
 	if len(username) < 3 {
-		return errors.New(errors.ErrBadRequest, "Username must be at least 3 characters", nil)
+		return errors.WithMessage(errors.ErrBadRequest, "Username must be at least 3 characters")
 	}
 
 	// Validate email
 	if !m.isValidEmail(email) {
-		return errors.New(errors.ErrBadRequest, "Invalid email address", nil)
+		return errors.WithMessage(errors.ErrBadRequest, "Invalid email address")
 	}
 
 	// Validate password
 	if password != "" && len(password) < s.Security.MinPasswordLength {
-		return errors.New(errors.ErrBadRequest, fmt.Sprintf("Password must be at least %d characters", s.Security.MinPasswordLength), nil)
+		return errors.WithFormat(errors.ErrBadRequest, "Password must be at least %d characters", s.Security.MinPasswordLength)
 	}
 
 	return nil

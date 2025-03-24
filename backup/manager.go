@@ -86,11 +86,22 @@ func (m *Manager) CreateBackup() (*model.Backup, error) {
 	backupData.Certificates = certificates
 
 	// 获取系统设置
-	settings, err := m.settingsMgr.GetAllSettings()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get settings: %v", err)
+	settings := m.settingsMgr.Get()
+	backupData.Settings = map[string]interface{}{
+		"site":         settings.Site,
+		"traffic":      settings.Traffic,
+		"ssl":          settings.SSL,
+		"proxy":        settings.Proxy,
+		"security":     settings.Security,
+		"notification": settings.Notification,
+		"backup":       settings.Backup,
+		"monitor":      settings.Monitor,
+		"log":          settings.Log,
+		"admin":        settings.Admin,
+		"xray":         settings.Xray,
+		"protocols":    settings.Protocols,
+		"transports":   settings.Transports,
 	}
-	backupData.Settings = settings
 
 	// 将数据写入备份文件
 	encoder := json.NewEncoder(file)
@@ -121,10 +132,11 @@ func (m *Manager) CreateBackup() (*model.Backup, error) {
 	})
 
 	// 发送通知
-	m.notifyMgr.SendNotification("backup_created", map[string]interface{}{
-		"path":      backup.Path,
-		"size":      backup.Size,
-		"timestamp": backup.Timestamp,
+	m.notifyMgr.Send(&notification.Notification{
+		To:      []string{m.settingsMgr.Get().Admin.Email},
+		Subject: "Backup Created",
+		Body:    fmt.Sprintf("Backup created successfully at %s with size %d bytes", backup.Path, backup.Size),
+		Type:    "backup_created",
 	})
 
 	return backup, nil
@@ -211,7 +223,21 @@ func (m *Manager) RestoreBackup(backupID int64) error {
 	}
 
 	// 恢复系统设置
-	if err := m.settingsMgr.UpdateSettings(backupData.Settings); err != nil {
+	if err := m.settingsMgr.Update(&settings.Settings{
+		Site:         backupData.Settings["site"].(settings.SiteSettings),
+		Traffic:      backupData.Settings["traffic"].(settings.TrafficSettings),
+		SSL:          backupData.Settings["ssl"].(settings.SSLSettings),
+		Proxy:        backupData.Settings["proxy"].(settings.ProxySettings),
+		Security:     backupData.Settings["security"].(settings.SecuritySettings),
+		Notification: backupData.Settings["notification"].(settings.NotificationSettings),
+		Backup:       backupData.Settings["backup"].(settings.BackupSettings),
+		Monitor:      backupData.Settings["monitor"].(settings.MonitorSettings),
+		Log:          backupData.Settings["log"].(settings.LogSettings),
+		Admin:        backupData.Settings["admin"].(settings.AdminSettings),
+		Xray:         backupData.Settings["xray"].(settings.XraySettings),
+		Protocols:    backupData.Settings["protocols"].(map[string]bool),
+		Transports:   backupData.Settings["transports"].(map[string]bool),
+	}); err != nil {
 		m.db.Rollback()
 		return fmt.Errorf("failed to restore settings: %v", err)
 	}
@@ -228,9 +254,11 @@ func (m *Manager) RestoreBackup(backupID int64) error {
 	})
 
 	// 发送通知
-	m.notifyMgr.SendNotification("backup_restored", map[string]interface{}{
-		"backup_id": backupID,
-		"timestamp": time.Now(),
+	m.notifyMgr.Send(&notification.Notification{
+		To:      []string{m.settingsMgr.Get().Admin.Email},
+		Subject: "Backup Restored",
+		Body:    fmt.Sprintf("Backup %d restored successfully", backupID),
+		Type:    "backup_restored",
 	})
 
 	return nil
@@ -288,9 +316,11 @@ func (m *Manager) DeleteBackup(backupID int64) error {
 	})
 
 	// 发送通知
-	m.notifyMgr.SendNotification("backup_deleted", map[string]interface{}{
-		"backup_id": backupID,
-		"path":      backup.Path,
+	m.notifyMgr.Send(&notification.Notification{
+		To:      []string{m.settingsMgr.Get().Admin.Email},
+		Subject: "Backup Deleted",
+		Body:    fmt.Sprintf("Backup %d deleted successfully", backupID),
+		Type:    "backup_deleted",
 	})
 
 	return nil

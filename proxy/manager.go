@@ -3,6 +3,7 @@ package proxy
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"sync"
 	"time"
 
@@ -215,22 +216,114 @@ func (m *Manager) checkPort(port int) bool {
 
 // createServer 创建代理服务器
 func (m *Manager) createServer(proxy *common.Proxy) (common.Server, error) {
+	// Convert common.Proxy to common.ProxyInstance
+	var settings map[string]interface{}
+	if err := json.Unmarshal([]byte(proxy.Settings), &settings); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal settings: %v", err)
+	}
+
+	proxyInstance := &common.ProxyInstance{
+		ID:       proxy.ID,
+		UserID:   proxy.UserID,
+		Type:     proxy.Protocol,
+		Port:     proxy.Port,
+		Settings: settings,
+		Enabled:  proxy.Enabled,
+	}
+
+	var server common.ProxyServerInterface
+	var err error
+
 	switch common.ProtocolType(proxy.Protocol) {
 	case common.ProtocolVMess:
-		return NewVMessServer(m.logger, proxy)
+		vmessConfig := &common.VMessConfig{}
+		if vmessSettings, ok := settings["vmess"]; ok {
+			vmessSettingsBytes, err := json.Marshal(vmessSettings)
+			if err != nil {
+				return nil, fmt.Errorf("failed to marshal vmess settings: %v", err)
+			}
+			if err := json.Unmarshal(vmessSettingsBytes, vmessConfig); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal vmess config: %v", err)
+			}
+		}
+		server, err = NewVMessServer(m.logger, vmessConfig, proxyInstance)
 	case common.ProtocolVLESS:
-		return NewVLESServer(m.logger, proxy)
+		vlessConfig := &common.VLESSConfig{}
+		if vlessSettings, ok := settings["vless"]; ok {
+			vlessSettingsBytes, err := json.Marshal(vlessSettings)
+			if err != nil {
+				return nil, fmt.Errorf("failed to marshal vless settings: %v", err)
+			}
+			if err := json.Unmarshal(vlessSettingsBytes, vlessConfig); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal vless config: %v", err)
+			}
+		}
+		server, err = NewVLESSServer(m.logger, vlessConfig, proxyInstance)
 	case common.ProtocolTrojan:
-		return NewTrojanServer(m.logger, proxy)
+		server, err = NewTrojanServer(m.logger, proxyInstance)
 	case common.ProtocolShadowsocks:
-		return NewShadowsocksServer(m.logger, proxy)
+		ssConfig := &common.ShadowsocksConfig{}
+		if ssSettings, ok := settings["shadowsocks"]; ok {
+			ssSettingsBytes, err := json.Marshal(ssSettings)
+			if err != nil {
+				return nil, fmt.Errorf("failed to marshal shadowsocks settings: %v", err)
+			}
+			if err := json.Unmarshal(ssSettingsBytes, ssConfig); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal shadowsocks config: %v", err)
+			}
+		}
+		server, err = NewShadowsocksServer(m.logger, ssConfig, proxyInstance)
 	case common.ProtocolDokodemo:
-		return NewDokodemoServer(m.logger, proxy)
+		// Implement conversion for other protocols
+		return nil, fmt.Errorf("protocol not implemented yet: %s", proxy.Protocol)
 	case common.ProtocolSocks:
-		return NewSocksServer(m.logger, proxy)
+		// Implement conversion for other protocols
+		return nil, fmt.Errorf("protocol not implemented yet: %s", proxy.Protocol)
 	case common.ProtocolHTTP:
-		return NewHTTPServer(m.logger, proxy)
+		// Implement conversion for other protocols
+		return nil, fmt.Errorf("protocol not implemented yet: %s", proxy.Protocol)
 	default:
 		return nil, fmt.Errorf("unsupported protocol: %s", proxy.Protocol)
 	}
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to create server: %v", err)
+	}
+
+	// Adapt ProxyServerInterface to common.Server
+	return &serverAdapter{server}, nil
+}
+
+// serverAdapter adapts ProxyServerInterface to common.Server
+type serverAdapter struct {
+	server common.ProxyServerInterface
+}
+
+// Start implements common.Server
+func (a *serverAdapter) Start() error {
+	return a.server.Start()
+}
+
+// Stop implements common.Server
+func (a *serverAdapter) Stop() error {
+	return a.server.Stop()
+}
+
+// GetPort implements common.Server
+func (a *serverAdapter) GetPort() int {
+	return a.server.GetPort()
+}
+
+// GetProtocol implements common.Server
+func (a *serverAdapter) GetProtocol() common.ProtocolType {
+	if getter, ok := a.server.(interface{ GetProtocol() common.ProtocolType }); ok {
+		return getter.GetProtocol()
+	}
+	// Default fallback
+	return common.ProtocolType("")
+}
+
+// HandleConnection implements common.Server
+func (a *serverAdapter) HandleConnection(conn io.ReadWriteCloser) error {
+	return a.server.HandleConnection(conn)
 }

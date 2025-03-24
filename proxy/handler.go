@@ -52,14 +52,14 @@ func (h *Handler) CreateProxy(c *gin.Context) {
 	}
 
 	proxy := &model.Proxy{
-		UserID:   userID,
+		UserID:   int64(userID),
 		Protocol: req.Protocol,
 		Port:     req.Port,
 		Settings: string(settings),
 		Enabled:  req.Enabled,
 	}
 
-	if err := h.service.Create(proxy); err != nil {
+	if err := h.service.CreateProxy(proxy); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -70,19 +70,19 @@ func (h *Handler) CreateProxy(c *gin.Context) {
 // GetProxy retrieves a proxy by ID
 func (h *Handler) GetProxy(c *gin.Context) {
 	userID := utils.GetUserIDFromContext(c.Request.Context())
-	proxyID, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	proxyID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid proxy ID"})
 		return
 	}
 
-	proxy, err := h.service.Get(uint(proxyID))
+	proxy, err := h.service.GetProxy(proxyID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	if userID != proxy.UserID {
+	if int64(userID) != proxy.UserID {
 		c.JSON(http.StatusForbidden, gin.H{"error": "access denied"})
 		return
 	}
@@ -93,7 +93,7 @@ func (h *Handler) GetProxy(c *gin.Context) {
 // ListProxies lists all proxies for the current user
 func (h *Handler) ListProxies(c *gin.Context) {
 	userID := utils.GetUserIDFromContext(c.Request.Context())
-	proxies, err := h.service.GetByUser(userID)
+	proxies, err := h.service.ListProxies(int64(userID))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -104,27 +104,27 @@ func (h *Handler) ListProxies(c *gin.Context) {
 
 // UpdateProxy updates a proxy
 func (h *Handler) UpdateProxy(c *gin.Context) {
+	var req UpdateProxyRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
 	userID := utils.GetUserIDFromContext(c.Request.Context())
-	proxyID, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	proxyID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid proxy ID"})
 		return
 	}
 
-	proxy, err := h.service.Get(uint(proxyID))
+	proxy, err := h.service.GetProxy(proxyID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	if userID != proxy.UserID {
+	if int64(userID) != proxy.UserID {
 		c.JSON(http.StatusForbidden, gin.H{"error": "access denied"})
-		return
-	}
-
-	var req UpdateProxyRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -139,7 +139,7 @@ func (h *Handler) UpdateProxy(c *gin.Context) {
 	proxy.Settings = string(settings)
 	proxy.Enabled = req.Enabled
 
-	if err := h.service.Update(proxy); err != nil {
+	if err := h.service.UpdateProxy(proxy); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -150,67 +150,69 @@ func (h *Handler) UpdateProxy(c *gin.Context) {
 // DeleteProxy deletes a proxy
 func (h *Handler) DeleteProxy(c *gin.Context) {
 	userID := utils.GetUserIDFromContext(c.Request.Context())
-	proxyID, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	proxyID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid proxy ID"})
 		return
 	}
 
-	proxy, err := h.service.Get(uint(proxyID))
+	proxy, err := h.service.GetProxy(proxyID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	if userID != proxy.UserID {
+	if int64(userID) != proxy.UserID {
 		c.JSON(http.StatusForbidden, gin.H{"error": "access denied"})
 		return
 	}
 
-	if err := h.service.Delete(uint(proxyID)); err != nil {
+	if err := h.service.DeleteProxy(proxyID); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "proxy deleted"})
+	c.JSON(http.StatusOK, gin.H{"message": "Proxy deleted successfully"})
 }
 
-// GetProxyStats retrieves traffic statistics for a proxy
+// GetProxyStats retrieves a proxy's stats
 func (h *Handler) GetProxyStats(c *gin.Context) {
 	userID := utils.GetUserIDFromContext(c.Request.Context())
-	proxyID, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	proxyID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid proxy ID"})
 		return
 	}
 
-	proxy, err := h.service.Get(uint(proxyID))
+	proxy, err := h.service.GetProxy(proxyID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	if userID != proxy.UserID {
+	if int64(userID) != proxy.UserID {
 		c.JSON(http.StatusForbidden, gin.H{"error": "access denied"})
 		return
 	}
 
-	upload, download := proxy.Upload, proxy.Download
-	c.JSON(http.StatusOK, gin.H{
-		"upload":   upload,
-		"download": download,
-	})
+	stats, err := h.service.GetProxyStats(proxyID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, stats)
 }
 
 // GetProxiesByUser handles retrieving proxies for a user
 func (h *Handler) GetProxiesByUser(c *gin.Context) {
-	userID, err := strconv.ParseUint(c.Param("user_id"), 10, 32)
+	userID, err := strconv.ParseInt(c.Param("user_id"), 10, 64)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user ID"})
 		return
 	}
 
-	proxies, err := h.service.GetByUser(uint(userID))
+	proxies, err := h.service.ListProxies(userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get proxies"})
 		return
@@ -219,44 +221,87 @@ func (h *Handler) GetProxiesByUser(c *gin.Context) {
 	c.JSON(http.StatusOK, proxies)
 }
 
-// EnableProxy handles proxy enabling
+// EnableProxy enables a proxy
 func (h *Handler) EnableProxy(c *gin.Context) {
-	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	userID := utils.GetUserIDFromContext(c.Request.Context())
+	proxyID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid proxy ID"})
 		return
 	}
 
-	if err := h.service.Enable(uint(id)); err != nil {
-		switch err {
-		case ErrProxyNotFound:
-			c.JSON(http.StatusNotFound, gin.H{"error": "proxy not found"})
-		default:
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to enable proxy"})
-		}
+	proxy, err := h.service.GetProxy(proxyID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "proxy enabled successfully"})
+	if int64(userID) != proxy.UserID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "access denied"})
+		return
+	}
+
+	if err := h.service.EnableProxy(proxyID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Proxy enabled successfully"})
 }
 
-// DisableProxy handles proxy disabling
+// DisableProxy disables a proxy
 func (h *Handler) DisableProxy(c *gin.Context) {
-	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	userID := utils.GetUserIDFromContext(c.Request.Context())
+	proxyID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid proxy ID"})
 		return
 	}
 
-	if err := h.service.Disable(uint(id)); err != nil {
-		switch err {
-		case ErrProxyNotFound:
-			c.JSON(http.StatusNotFound, gin.H{"error": "proxy not found"})
-		default:
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to disable proxy"})
-		}
+	proxy, err := h.service.GetProxy(proxyID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "proxy disabled successfully"})
+	if int64(userID) != proxy.UserID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "access denied"})
+		return
+	}
+
+	if err := h.service.DisableProxy(proxyID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Proxy disabled successfully"})
+}
+
+// ListUserProxies lists all proxies for a user (admin only)
+func (h *Handler) ListUserProxies(c *gin.Context) {
+	// Get the admin status from the context, or check role
+	// This is a placeholder - implement your actual admin check based on your auth system
+	adminID := utils.GetUserIDFromContext(c.Request.Context())
+
+	// For now, we'll assume any user can only access their own data
+	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user ID"})
+		return
+	}
+
+	// In a real system, you would check if adminID is actually an admin
+	// For simplicity, we just check if the user is trying to access their own data
+	if int64(adminID) != userID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "access denied, you can only view your own proxies"})
+		return
+	}
+
+	proxies, err := h.service.ListProxies(userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, proxies)
 }

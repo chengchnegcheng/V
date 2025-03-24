@@ -17,6 +17,13 @@ import (
 var jwtSecret = []byte("your-secret-key") // 在实际应用中应该从配置文件读取
 var db model.DB
 
+// Common errors not already defined in auth/service.go
+var (
+	ErrTokenExpired  = errors.New("token has expired")
+	ErrInvalidToken  = errors.New("invalid token")
+	ErrAdminRequired = errors.New("admin privileges required")
+)
+
 // Init 初始化认证系统
 func Init(database model.DB) {
 	db = database

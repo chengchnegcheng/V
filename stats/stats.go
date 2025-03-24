@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"v/logger"
+	"v/model"
 	"v/notification"
 	"v/settings"
 )
@@ -41,6 +42,9 @@ type Manager struct {
 	stopChan  chan struct{}
 }
 
+// StatsManager alias for compatibility with interfaces
+type StatsManager Manager
+
 // New creates a new statistics manager
 func New(log *logger.Logger, settings *settings.Manager, notifier *notification.Manager) *Manager {
 	return &Manager{
@@ -51,6 +55,12 @@ func New(log *logger.Logger, settings *settings.Manager, notifier *notification.
 		stats:     make(map[int64]*TrafficStats),
 		stopChan:  make(chan struct{}),
 	}
+}
+
+// NewStatsManager creates a new stats manager - alias for compatibility
+func NewStatsManager(log *logger.Logger, settings *settings.Manager, notifier *notification.Manager) *StatsManager {
+	manager := New(log, settings, notifier)
+	return (*StatsManager)(manager)
 }
 
 // Start starts the statistics manager
@@ -83,6 +93,58 @@ func (m *Manager) Start() error {
 // Stop stops the statistics manager
 func (m *Manager) Stop() {
 	close(m.stopChan)
+}
+
+// Start starts the statistics manager (StatsManager implementation)
+func (m *StatsManager) Start() error {
+	return (*Manager)(m).Start()
+}
+
+// Stop stops the statistics manager (StatsManager implementation)
+func (m *StatsManager) Stop() {
+	(*Manager)(m).Stop()
+}
+
+// GetTrafficUsage returns traffic usage for a user - interface method
+func (m *StatsManager) GetTrafficUsage(userID int64) (*model.TrafficStats, error) {
+	stats, err := (*Manager)(m).GetTraffic(userID)
+	if err != nil {
+		return nil, err
+	}
+
+	return &model.TrafficStats{
+		UserID:      userID,
+		Upload:      stats.Upload,
+		Download:    stats.Download,
+		Total:       stats.Upload + stats.Download,
+		LastResetAt: stats.Timestamp,
+	}, nil
+}
+
+// GetDailyUsage returns daily traffic usage for a user - interface method
+func (m *StatsManager) GetDailyUsage(userID int64, start, end time.Time) ([]*model.DailyStats, error) {
+	stats, err := (*Manager)(m).GetDailyStats(userID, start, end)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]*model.DailyStats, len(stats))
+	for i, s := range stats {
+		result[i] = &model.DailyStats{
+			UserID:   s.UserID,
+			Date:     s.Date,
+			Upload:   s.Upload,
+			Download: s.Download,
+			Total:    s.Total,
+		}
+	}
+
+	return result, nil
+}
+
+// UpdateTraffic updates traffic statistics for a user - interface method
+func (m *StatsManager) UpdateTraffic(userID int64, upload, download int64) error {
+	return (*Manager)(m).AddTraffic(userID, upload, download)
 }
 
 // statsRoutine runs the statistics routine
@@ -291,5 +353,24 @@ func (m *Manager) saveDailyStats(statsFile string, stats *DailyStats) error {
 		return fmt.Errorf("failed to write daily stats file: %v", err)
 	}
 
+	return nil
+}
+
+// GetUserStats gets user traffic statistics for a date range
+func (m *Manager) GetUserStats(userID int64, start, end time.Time) ([]*DailyStats, error) {
+	return m.GetDailyStats(userID, start, end)
+}
+
+// GetProtocolStats gets protocol traffic statistics
+func (m *Manager) GetProtocolStats(protocolID int64, start, end time.Time) ([]*DailyStats, error) {
+	// This is a stub implementation since we don't have protocol-specific stats yet
+	// In a real implementation, we would fetch protocol-specific stats from the database
+	return []*DailyStats{}, nil
+}
+
+// UpdateProtocolTraffic updates protocol traffic statistics
+func (m *Manager) UpdateProtocolTraffic(protocolID int64, upload, download int64) error {
+	// This is a stub implementation since we don't have protocol-specific stats updating yet
+	// In a real implementation, we would update protocol-specific stats in the database
 	return nil
 }

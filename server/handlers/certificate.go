@@ -30,7 +30,7 @@ func HandleCreateCertificate(c *gin.Context) {
 	}
 
 	// 创建证书
-	cert, err := certMgr.Create(req.Domain, req.Email, req.AutoRenew, req.Validation)
+	cert, err := certMgr.Create(req.Domain, req.AutoRenew)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": err.Error(),
@@ -65,11 +65,7 @@ func HandleGetCertificate(c *gin.Context) {
 
 // HandleListCertificates 处理获取证书列表的请求
 func HandleListCertificates(c *gin.Context) {
-	// 获取用户ID
-	userID := c.GetInt64("user_id")
-
-	// 获取证书列表
-	certs, err := certMgr.List(userID)
+	certs, err := certMgr.List()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": err.Error(),
@@ -128,16 +124,8 @@ func HandleRenewCertificate(c *gin.Context) {
 
 // HandleValidateCertificate 处理验证证书的请求
 func HandleValidateCertificate(c *gin.Context) {
-	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid certificate ID",
-		})
-		return
-	}
-
-	// 验证证书
-	if err := certMgr.Validate(id); err != nil {
+	domain := c.Param("domain")
+	if err := certMgr.Validate(domain); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": err.Error(),
 		})

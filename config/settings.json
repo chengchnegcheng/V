@@ -78,5 +78,27 @@
   },
   "admin": {
     "email": "admin@example.com"
+  },
+  "xray": {
+    "version": "",
+    "auto_update": true,
+    "check_interval": 86400000000000,
+    "custom_config": false,
+    "config_path": ""
+  },
+  "protocols": {
+    "http": false,
+    "shadowsocks": true,
+    "socks": false,
+    "trojan": true,
+    "vless": true,
+    "vmess": true
+  },
+  "transports": {
+    "grpc": true,
+    "http2": true,
+    "quic": true,
+    "tcp": true,
+    "ws": true
   }
-} 
+}

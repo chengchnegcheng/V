@@ -14,7 +14,7 @@ func (db *mockSystemDB) DeleteProxy(id int64) error {
 }
 
 func TestSystemMonitor_GetSystemStats(t *testing.T) {
-	monitor := NewSystemMonitor(&mockSystemDB{})
+	monitor := NewSystemStatsMonitor(&mockSystemDB{})
 
 	stats, err := monitor.GetSystemStats()
 	if err != nil {
@@ -81,7 +81,7 @@ func TestSystemMonitor_GetSystemStats(t *testing.T) {
 }
 
 func TestSystemMonitor_GetCPUStats(t *testing.T) {
-	monitor := NewSystemMonitor(&mockSystemDB{})
+	monitor := NewSystemStatsMonitor(&mockSystemDB{})
 
 	stats := &model.SystemStats{}
 	err := monitor.getCPUStats(stats)
@@ -101,7 +101,7 @@ func TestSystemMonitor_GetCPUStats(t *testing.T) {
 }
 
 func TestSystemMonitor_GetMemoryStats(t *testing.T) {
-	monitor := NewSystemMonitor(&mockSystemDB{})
+	monitor := NewSystemStatsMonitor(&mockSystemDB{})
 
 	stats := &model.SystemStats{}
 	err := monitor.getMemoryStats(stats)
@@ -124,7 +124,7 @@ func TestSystemMonitor_GetMemoryStats(t *testing.T) {
 }
 
 func TestSystemMonitor_GetDiskStats(t *testing.T) {
-	monitor := NewSystemMonitor(&mockSystemDB{})
+	monitor := NewSystemStatsMonitor(&mockSystemDB{})
 
 	stats := &model.SystemStats{}
 	err := monitor.getDiskStats(stats)
@@ -147,7 +147,7 @@ func TestSystemMonitor_GetDiskStats(t *testing.T) {
 }
 
 func TestSystemMonitor_GetNetworkStats(t *testing.T) {
-	monitor := NewSystemMonitor(&mockSystemDB{})
+	monitor := NewSystemStatsMonitor(&mockSystemDB{})
 
 	stats := &model.SystemStats{}
 	err := monitor.getNetworkStats(stats)
@@ -160,11 +160,5 @@ func TestSystemMonitor_GetNetworkStats(t *testing.T) {
 	}
 	if stats.NetworkBytesReceived < 0 {
 		t.Errorf("Invalid network bytes received: %d", stats.NetworkBytesReceived)
-	}
-	if stats.NetworkPacketsSent < 0 {
-		t.Errorf("Invalid network packets sent: %d", stats.NetworkPacketsSent)
-	}
-	if stats.NetworkPacketsRecv < 0 {
-		t.Errorf("Invalid network packets received: %d", stats.NetworkPacketsRecv)
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"math/big"
 	"os"
@@ -15,53 +16,51 @@ import (
 	"sync"
 	"time"
 
-	"v/errors"
 	"v/logger"
 	"v/settings"
 )
 
-// Certificate represents an SSL certificate
-type Certificate struct {
-	ID        int64     `json:"id"`
-	Domain    string    `json:"domain"`
-	CertFile  string    `json:"cert_file"`
-	KeyFile   string    `json:"key_file"`
-	IssuedAt  time.Time `json:"issued_at"`
-	ExpiresAt time.Time `json:"expires_at"`
-	AutoRenew bool      `json:"auto_renew"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+// SelfSignedCert represents a self-signed SSL certificate
+type SelfSignedCert struct {
+	ID          int64     `json:"id"`
+	Domain      string    `json:"domain"`
+	CertFile    string    `json:"cert_file"`
+	KeyFile     string    `json:"key_file"`
+	IssuedAt    time.Time `json:"issued_at"`
+	ExpiresAt   time.Time `json:"expires_at"`
+	ExpireAt    time.Time `json:"expire_at"` // Alias for ExpireAt to match the API
+	AutoRenew   bool      `json:"auto_renew"`
+	LastRenewed time.Time `json:"last_renewed"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }
 
-// Manager represents an SSL certificate manager
-type Manager struct {
+// LocalCertManager represents a manager for self-signed certificates
+type LocalCertManager struct {
 	log      *logger.Logger
 	settings *settings.Manager
-	certs    map[int64]*Certificate
+	certs    map[int64]*SelfSignedCert
 	mu       sync.RWMutex
 }
 
-// New creates a new SSL certificate manager
-func New(log *logger.Logger, settings *settings.Manager) *Manager {
-	return &Manager{
+// NewLocalManager creates a new self-signed certificate manager
+func NewLocalManager(log *logger.Logger, settings *settings.Manager) *LocalCertManager {
+	return &LocalCertManager{
 		log:      log,
 		settings: settings,
-		certs:    make(map[int64]*Certificate),
+		certs:    make(map[int64]*SelfSignedCert),
 	}
 }
 
-// Create creates a new SSL certificate
-func (m *Manager) Create(domain string, autoRenew bool) (*Certificate, error) {
+// Create creates a new self-signed SSL certificate
+func (m *LocalCertManager) Create(domain string, autoRenew bool) (*SelfSignedCert, error) {
 	// Validate input
 	if err := m.validateInput(domain); err != nil {
 		return nil, err
 	}
 
-	// Get settings
-	s := m.settings.Get()
-
 	// Create certificate
-	cert := &Certificate{
+	cert := &SelfSignedCert{
 		Domain:    domain,
 		AutoRenew: autoRenew,
 		CreatedAt: time.Now(),
@@ -78,7 +77,7 @@ func (m *Manager) Create(domain string, autoRenew bool) (*Certificate, error) {
 	m.certs[cert.ID] = cert
 	m.mu.Unlock()
 
-	m.log.Info("SSL certificate created", logger.Fields{
+	m.log.Info("Self-signed SSL certificate created", logger.Fields{
 		"domain":     domain,
 		"auto_renew": autoRenew,
 	})
@@ -87,20 +86,20 @@ func (m *Manager) Create(domain string, autoRenew bool) (*Certificate, error) {
 }
 
 // Get returns a certificate by ID
-func (m *Manager) Get(id int64) (*Certificate, error) {
+func (m *LocalCertManager) Get(id int64) (*SelfSignedCert, error) {
 	m.mu.RLock()
 	cert, ok := m.certs[id]
 	m.mu.RUnlock()
 
 	if !ok {
-		return nil, errors.New(errors.ErrNotFound, "Certificate not found", nil)
+		return nil, errors.New("certificate not found")
 	}
 
 	return cert, nil
 }
 
 // GetByDomain returns a certificate by domain
-func (m *Manager) GetByDomain(domain string) (*Certificate, error) {
+func (m *LocalCertManager) GetByDomain(domain string) (*SelfSignedCert, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -110,11 +109,11 @@ func (m *Manager) GetByDomain(domain string) (*Certificate, error) {
 		}
 	}
 
-	return nil, errors.New(errors.ErrNotFound, "Certificate not found", nil)
+	return nil, errors.New("certificate not found")
 }
 
 // Update updates a certificate
-func (m *Manager) Update(cert *Certificate) error {
+func (m *LocalCertManager) Update(cert *SelfSignedCert) error {
 	// Validate input
 	if err := m.validateInput(cert.Domain); err != nil {
 		return err
@@ -128,7 +127,7 @@ func (m *Manager) Update(cert *Certificate) error {
 	m.certs[cert.ID] = cert
 	m.mu.Unlock()
 
-	m.log.Info("SSL certificate updated", logger.Fields{
+	m.log.Info("Self-signed SSL certificate updated", logger.Fields{
 		"cert_id":    cert.ID,
 		"domain":     cert.Domain,
 		"auto_renew": cert.AutoRenew,
@@ -138,7 +137,7 @@ func (m *Manager) Update(cert *Certificate) error {
 }
 
 // Delete deletes a certificate
-func (m *Manager) Delete(id int64) error {
+func (m *LocalCertManager) Delete(id int64) error {
 	// Get certificate
 	cert, err := m.Get(id)
 	if err != nil {
@@ -155,7 +154,7 @@ func (m *Manager) Delete(id int64) error {
 	delete(m.certs, id)
 	m.mu.Unlock()
 
-	m.log.Info("SSL certificate deleted", logger.Fields{
+	m.log.Info("Self-signed SSL certificate deleted", logger.Fields{
 		"cert_id": id,
 		"domain":  cert.Domain,
 	})
@@ -164,7 +163,7 @@ func (m *Manager) Delete(id int64) error {
 }
 
 // Renew renews a certificate
-func (m *Manager) Renew(id int64) error {
+func (m *LocalCertManager) Renew(id int64) error {
 	// Get certificate
 	cert, err := m.Get(id)
 	if err != nil {
@@ -176,7 +175,7 @@ func (m *Manager) Renew(id int64) error {
 		return err
 	}
 
-	m.log.Info("SSL certificate renewed", logger.Fields{
+	m.log.Info("Self-signed SSL certificate renewed", logger.Fields{
 		"cert_id": id,
 		"domain":  cert.Domain,
 	})
@@ -184,16 +183,33 @@ func (m *Manager) Renew(id int64) error {
 	return nil
 }
 
+// ListCertificates returns a list of all certificates
+func (m *LocalCertManager) ListCertificates() ([]*SelfSignedCert, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	certs := make([]*SelfSignedCert, 0, len(m.certs))
+	for _, cert := range m.certs {
+		certs = append(certs, cert)
+	}
+
+	m.log.Info("Listed all self-signed SSL certificates", logger.Fields{
+		"count": len(certs),
+	})
+
+	return certs, nil
+}
+
 // validateInput validates certificate input
-func (m *Manager) validateInput(domain string) error {
+func (m *LocalCertManager) validateInput(domain string) error {
 	if domain == "" {
-		return errors.New(errors.ErrBadRequest, "Domain is required", nil)
+		return errors.New("domain is required")
 	}
 
 	// Domain validation
 	// Check if the domain has a valid format
 	if !isValidDomain(domain) {
-		return errors.New(errors.ErrBadRequest, "Invalid domain format", nil)
+		return errors.New("invalid domain format")
 	}
 
 	return nil
@@ -249,32 +265,41 @@ func isValidDomain(domain string) bool {
 	return true
 }
 
-// generateCertificate generates a new SSL certificate
-func (m *Manager) generateCertificate(cert *Certificate) error {
-	// Get settings
-	s := m.settings.Get()
-
-	// Generate private key
+// generateCertificate generates a new self-signed certificate
+func (m *LocalCertManager) generateCertificate(cert *SelfSignedCert) error {
+	// Generate key
 	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
 		return fmt.Errorf("failed to generate private key: %v", err)
 	}
 
-	// Generate certificate
+	// Create certificate template
+	notBefore := time.Now()
+	notAfter := notBefore.Add(365 * 24 * time.Hour) // 1 year
+
+	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
+	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
+	if err != nil {
+		return fmt.Errorf("failed to generate serial number: %v", err)
+	}
+
 	template := x509.Certificate{
-		SerialNumber: big.NewInt(1),
+		SerialNumber: serialNumber,
 		Subject: pkix.Name{
-			Organization: []string{"V Proxy"},
+			Organization: []string{"Self Signed Certificate"},
 			CommonName:   cert.Domain,
 		},
-		NotBefore: time.Now(),
-		NotAfter:  time.Now().AddDate(0, 0, s.SSL.RenewDays),
-		KeyUsage:  x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
-		ExtKeyUsage: []x509.ExtKeyUsage{
-			x509.ExtKeyUsageServerAuth,
-			x509.ExtKeyUsageClientAuth,
-		},
+		NotBefore:             notBefore,
+		NotAfter:              notAfter,
+		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		BasicConstraintsValid: true,
+		DNSNames:              []string{cert.Domain},
+	}
+
+	// Add www subdomain
+	if !strings.HasPrefix(cert.Domain, "www.") {
+		template.DNSNames = append(template.DNSNames, "www."+cert.Domain)
 	}
 
 	// Create certificate
@@ -283,58 +308,57 @@ func (m *Manager) generateCertificate(cert *Certificate) error {
 		return fmt.Errorf("failed to create certificate: %v", err)
 	}
 
-	// Create certificate directory
-	certDir := filepath.Join(s.SSL.CertDir, cert.Domain)
+	// Create cert directory if it doesn't exist
+	certDir := filepath.Join("certs")
 	if err := os.MkdirAll(certDir, 0755); err != nil {
 		return fmt.Errorf("failed to create certificate directory: %v", err)
 	}
 
-	// Save certificate
-	certFile := filepath.Join(certDir, "cert.pem")
-	keyFile := filepath.Join(certDir, "key.pem")
-
-	// Write certificate
-	certOut, err := os.Create(certFile)
+	// Write certificate to file
+	certOut, err := os.Create(filepath.Join(certDir, cert.Domain+".crt"))
 	if err != nil {
-		return fmt.Errorf("failed to create certificate file: %v", err)
+		return fmt.Errorf("failed to open certificate file for writing: %v", err)
 	}
+	defer certOut.Close()
+
 	if err := pem.Encode(certOut, &pem.Block{Type: "CERTIFICATE", Bytes: derBytes}); err != nil {
-		certOut.Close()
-		return fmt.Errorf("failed to write certificate: %v", err)
+		return fmt.Errorf("failed to write certificate to file: %v", err)
 	}
-	certOut.Close()
 
-	// Write private key
-	keyOut, err := os.OpenFile(keyFile, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	// Write private key to file
+	keyOut, err := os.OpenFile(filepath.Join(certDir, cert.Domain+".key"), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
 	if err != nil {
-		return fmt.Errorf("failed to create key file: %v", err)
+		return fmt.Errorf("failed to open private key file for writing: %v", err)
 	}
-	if err := pem.Encode(keyOut, &pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(privateKey)}); err != nil {
-		keyOut.Close()
-		return fmt.Errorf("failed to write private key: %v", err)
-	}
-	keyOut.Close()
+	defer keyOut.Close()
 
-	// Update certificate
-	cert.CertFile = certFile
-	cert.KeyFile = keyFile
-	cert.IssuedAt = time.Now()
-	cert.ExpiresAt = time.Now().AddDate(0, 0, s.SSL.RenewDays)
+	privBytes := x509.MarshalPKCS1PrivateKey(privateKey)
+	if err := pem.Encode(keyOut, &pem.Block{Type: "RSA PRIVATE KEY", Bytes: privBytes}); err != nil {
+		return fmt.Errorf("failed to write private key to file: %v", err)
+	}
+
+	// Update certificate paths
+	cert.CertFile = filepath.Join(certDir, cert.Domain+".crt")
+	cert.KeyFile = filepath.Join(certDir, cert.Domain+".key")
+	cert.IssuedAt = notBefore
+	cert.ExpiresAt = notAfter
 	cert.UpdatedAt = time.Now()
 
 	return nil
 }
 
 // deleteCertificateFiles deletes certificate files
-func (m *Manager) deleteCertificateFiles(cert *Certificate) error {
+func (m *LocalCertManager) deleteCertificateFiles(cert *SelfSignedCert) error {
+	// Delete certificate file
 	if cert.CertFile != "" {
-		if err := os.Remove(cert.CertFile); err != nil {
+		if err := os.Remove(cert.CertFile); err != nil && !os.IsNotExist(err) {
 			return fmt.Errorf("failed to delete certificate file: %v", err)
 		}
 	}
 
+	// Delete key file
 	if cert.KeyFile != "" {
-		if err := os.Remove(cert.KeyFile); err != nil {
+		if err := os.Remove(cert.KeyFile); err != nil && !os.IsNotExist(err) {
 			return fmt.Errorf("failed to delete key file: %v", err)
 		}
 	}
@@ -343,10 +367,18 @@ func (m *Manager) deleteCertificateFiles(cert *Certificate) error {
 }
 
 // LoadCertificate loads a certificate from files
-func (m *Manager) LoadCertificate(certFile, keyFile string) (*tls.Certificate, error) {
+func (m *LocalCertManager) LoadCertificate(certFile, keyFile string) (*tls.Certificate, error) {
+	// Load certificate and key
 	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load certificate: %v", err)
 	}
+
 	return &cert, nil
 }
+
+// Manager is an alias for ACMEManager for backward compatibility
+type Manager = ACMEManager
+
+// CertificateManager is an alias for LocalCertManager for backward compatibility
+type CertificateManager = LocalCertManager

@@ -23,6 +23,9 @@ var schemaFS embed.FS
 // DBInstance is the global database connection
 var DBInstance *Database
 
+// DB 是全局数据库连接对象，用于兼容性目的
+var DB *sql.DB
+
 // Database represents a database implementation
 type Database struct {
 	*gorm.DB
@@ -202,7 +205,7 @@ func GetDB() *Database {
 func GetUserByUsername(username string) (*model.User, error) {
 	var user model.User
 	err := DBInstance.DB.Raw(`
-		SELECT id, username, password, email, is_admin, traffic_limit, traffic_used,
+		SELECT id, username, password, email, is_admin, "traffic_limit", traffic_used,
 			expire_at, last_login_at, login_attempts, locked_until
 		FROM users
 		WHERE username = ?
@@ -221,7 +224,12 @@ func CreateUser(user *model.User) error {
 // GetUser retrieves a user by ID
 func GetUser(id int64) (*model.User, error) {
 	var user model.User
-	err := DBInstance.DB.First(&user, id).Error
+	err := DBInstance.DB.Raw(`
+		SELECT id, username, email, password, salt, is_admin, "traffic_limit", traffic_used,
+			expire_at, last_login_at, login_attempts, locked_until, created_at, updated_at
+		FROM users
+		WHERE id = ?
+	`, id).Scan(&user).Error
 	if err != nil {
 		return nil, err
 	}
@@ -252,7 +260,7 @@ func ListUsers() ([]model.User, error) {
 func (db *Database) CreateUser(user *model.User) error {
 	query := `
 		INSERT INTO users (
-			username, email, password, salt, is_admin, traffic_limit, traffic_used,
+			username, email, password, salt, is_admin, "traffic_limit", traffic_used,
 			expire_at, last_login_at, login_attempts, locked_until, created_at, updated_at
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
@@ -288,7 +296,7 @@ func (db *Database) CreateUser(user *model.User) error {
 func (db *Database) GetUser(id int64) (*model.User, error) {
 	var user model.User
 	query := `
-		SELECT id, username, email, password, salt, is_admin, traffic_limit, traffic_used,
+		SELECT id, username, email, password, salt, is_admin, "traffic_limit", traffic_used,
 			expire_at, last_login_at, login_attempts, locked_until, created_at, updated_at
 		FROM users
 		WHERE id = ?
@@ -322,7 +330,7 @@ func (db *Database) GetUser(id int64) (*model.User, error) {
 func (db *Database) GetUserByUsername(username string) (*model.User, error) {
 	var user model.User
 	query := `
-		SELECT id, username, email, password, salt, is_admin, traffic_limit, traffic_used,
+		SELECT id, username, email, password, salt, is_admin, "traffic_limit", traffic_used,
 			expire_at, last_login_at, login_attempts, locked_until, created_at, updated_at
 		FROM users
 		WHERE username = ?
@@ -356,7 +364,7 @@ func (db *Database) GetUserByUsername(username string) (*model.User, error) {
 func (db *Database) GetUserByEmail(email string) (*model.User, error) {
 	var user model.User
 	query := `
-		SELECT id, username, email, password, salt, is_admin, traffic_limit, traffic_used,
+		SELECT id, username, email, password, salt, is_admin, "traffic_limit", traffic_used,
 			expire_at, last_login_at, login_attempts, locked_until, created_at, updated_at
 		FROM users
 		WHERE email = ?
@@ -391,7 +399,7 @@ func (db *Database) UpdateUser(user *model.User) error {
 	query := `
 		UPDATE users SET
 			username = ?, email = ?, password = ?, salt = ?, is_admin = ?,
-			traffic_limit = ?, traffic_used = ?, expire_at = ?, last_login_at = ?,
+			"traffic_limit" = ?, traffic_used = ?, expire_at = ?, last_login_at = ?,
 			login_attempts = ?, locked_until = ?, updated_at = ?
 		WHERE id = ?
 	`
@@ -422,7 +430,7 @@ func (db *Database) DeleteUser(id int64) error {
 // ListUsers returns a list of users
 func (db *Database) ListUsers(offset, limit int) ([]*model.User, error) {
 	query := `
-		SELECT id, username, email, password, salt, is_admin, traffic_limit, traffic_used,
+		SELECT id, username, email, password, salt, is_admin, "traffic_limit", traffic_used,
 			expire_at, last_login_at, login_attempts, locked_until, created_at, updated_at
 		FROM users
 		ORDER BY id DESC
@@ -849,7 +857,7 @@ func (db *Database) PrepareStatements() error {
 	// Prepare user-related statements
 	userStmt, err := db.Prepare(`
 		SELECT id, username, email, password, is_admin, enabled, created_at, expire_at, 
-		       traffic_limit, used_traffic, last_login, login_attempts, locked_until
+		       "traffic_limit", used_traffic, last_login, login_attempts, locked_until
 		FROM users WHERE id = ?
 	`)
 	if err != nil {
@@ -1498,4 +1506,34 @@ func (m *MockDB) Close() error {
 func init() {
 	// Skip initialization to avoid "limit" keyword error
 	fmt.Println("Skipping database auto-initialization to avoid SQL syntax errors")
+}
+
+// ListAlertRecords returns all alert records
+func (db *Database) ListAlertRecords(out *[]*model.AlertRecord) error {
+	return db.DB.Find(out).Error
+}
+
+// CreateTrafficHistory creates a new traffic history record
+func (db *Database) CreateTrafficHistory(history *model.TrafficHistory) error {
+	return db.DB.Create(history).Error
+}
+
+// ListTrafficHistoryByDateRange returns traffic history records within a date range
+func (db *Database) ListTrafficHistoryByDateRange(userID uint, startDate, endDate string, histories *[]*model.TrafficHistory) error {
+	return db.DB.Where("user_id = ? AND created_at BETWEEN ? AND ?", userID, startDate, endDate).Find(histories).Error
+}
+
+// GetSettings retrieves a setting value by key
+func (db *Database) GetSettings(key string) (string, error) {
+	var value string
+	err := db.DB.Raw("SELECT value FROM settings WHERE key = ?", key).Scan(&value).Error
+	if err != nil {
+		return "", err
+	}
+	return value, nil
+}
+
+// SetSettings sets a setting value by key
+func (db *Database) SetSettings(key, value string) error {
+	return db.DB.Exec("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", key, value).Error
 }

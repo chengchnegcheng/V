@@ -1,205 +1,229 @@
 <template>
-  <div class="layout-container">
+  <div class="app-container">
     <!-- 侧边栏 -->
     <div class="sidebar">
-      <div class="logo">V 管理面板</div>
+      <div class="logo">
+        <h1>V 管理面板</h1>
+      </div>
       <el-menu
-        :default-active="activeMenu"
-        router
-        background-color="#304156"
-        text-color="#bfcbd9"
+        class="sidebar-menu"
+        background-color="#2b3a4d"
+        text-color="#fff"
         active-text-color="#409EFF"
+        :default-active="activeMenu"
+        :collapse="isCollapse"
+        router
       >
         <el-menu-item index="/">
-          <el-icon><DataBoard /></el-icon>
+          <el-icon><Monitor /></el-icon>
           <span>控制面板</span>
         </el-menu-item>
-
-        <el-sub-menu index="user-management">
+        
+        <el-menu-item index="/inbounds">
+          <el-icon><Connection /></el-icon>
+          <span>代理服务</span>
+        </el-menu-item>
+        
+        <el-sub-menu index="user">
           <template #title>
             <el-icon><User /></el-icon>
             <span>用户管理</span>
           </template>
-          <el-menu-item index="/users">
-            <el-icon><Avatar /></el-icon>
-            <span>用户列表</span>
-          </el-menu-item>
-          <el-menu-item index="/roles">
-            <el-icon><Collection /></el-icon>
-            <span>角色管理</span>
-          </el-menu-item>
+          <el-menu-item index="/users">用户列表</el-menu-item>
+          <el-menu-item index="/roles">角色管理</el-menu-item>
         </el-sub-menu>
-
-        <el-sub-menu index="proxy-management">
+        
+        <el-sub-menu index="monitor">
           <template #title>
-            <el-icon><Connection /></el-icon>
-            <span>代理服务</span>
-          </template>
-          <el-menu-item index="/proxies">
-            <el-icon><Promotion /></el-icon>
-            <span>协议管理</span>
-          </el-menu-item>
-        </el-sub-menu>
-
-        <el-sub-menu index="monitoring">
-          <template #title>
-            <el-icon><Monitor /></el-icon>
+            <el-icon><DataAnalysis /></el-icon>
             <span>监控与统计</span>
           </template>
-          <el-menu-item index="/traffic">
-            <el-icon><DataAnalysis /></el-icon>
-            <span>流量监控</span>
-          </el-menu-item>
-          <el-menu-item index="/monitor">
-            <el-icon><Cpu /></el-icon>
-            <span>系统监控</span>
-          </el-menu-item>
-          <el-menu-item index="/stats">
-            <el-icon><Histogram /></el-icon>
-            <span>统计分析</span>
-          </el-menu-item>
+          <el-menu-item index="/system-monitor">系统监控</el-menu-item>
+          <el-menu-item index="/traffic-monitor">流量监控</el-menu-item>
+          <el-menu-item index="/stats">统计数据</el-menu-item>
         </el-sub-menu>
-
-        <el-sub-menu index="system-tools">
+        
+        <el-sub-menu index="tools">
           <template #title>
             <el-icon><Tools /></el-icon>
             <span>系统工具</span>
           </template>
-          <el-menu-item index="/certificates">
-            <el-icon><Document /></el-icon>
-            <span>证书管理</span>
-          </el-menu-item>
-          <el-menu-item index="/backups">
-            <el-icon><Files /></el-icon>
-            <span>备份恢复</span>
-          </el-menu-item>
-          <el-menu-item index="/logs">
-            <el-icon><Notebook /></el-icon>
-            <span>日志管理</span>
-          </el-menu-item>
-          <el-menu-item index="/alerts">
-            <el-icon><Bell /></el-icon>
-            <span>告警设置</span>
-          </el-menu-item>
+          <el-menu-item index="/logs">系统日志</el-menu-item>
+          <el-menu-item index="/backups">备份恢复</el-menu-item>
+          <el-menu-item index="/certificates">证书管理</el-menu-item>
         </el-sub-menu>
         
-        <el-menu-item index="/settings">
-          <el-icon><Setting /></el-icon>
-          <span>系统设置</span>
-        </el-menu-item>
+        <el-sub-menu index="settings">
+          <template #title>
+            <el-icon><Setting /></el-icon>
+            <span>系统设置</span>
+          </template>
+          <el-menu-item index="/settings">配置管理</el-menu-item>
+        </el-sub-menu>
       </el-menu>
     </div>
     
-    <!-- 主要内容区域 -->
+    <!-- 主内容区 -->
     <div class="main-content">
-      <!-- 顶部导航 -->
-      <div class="navbar">
-        <div class="left-menu">
-          <el-button type="text" @click="toggleSidebar">
-            <el-icon><Fold v-if="!sidebarCollapsed" /><Expand v-else /></el-icon>
-          </el-button>
+      <!-- 顶部栏 -->
+      <header class="header">
+        <div class="header-left">
+          <el-icon
+            class="collapse-btn"
+            @click="toggleSidebar"
+          >
+            <Fold v-if="!isCollapse" />
+            <Expand v-else />
+          </el-icon>
         </div>
-        <div class="right-menu">
-          <el-dropdown trigger="click">
-            <span class="user-dropdown">
-              <el-avatar size="small" class="avatar">A</el-avatar>
-              {{ username }}
-              <el-icon><ArrowDown /></el-icon>
-            </span>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item command="profile">个人信息</el-dropdown-item>
-                <el-dropdown-item divided @click="handleLogout">退出登录</el-dropdown-item>
-              </el-dropdown-menu>
-            </template>
-          </el-dropdown>
+        <div class="header-right">
+          <div class="user-info">
+            <el-avatar size="small" class="user-avatar">{{ username.charAt(0).toUpperCase() }}</el-avatar>
+            <span class="username">{{ username }}</span>
+            <el-button type="text" size="small" @click="goToProfile" class="user-action-btn">个人资料</el-button>
+            <el-button type="text" size="small" @click="goToChangePassword" class="user-action-btn">修改密码</el-button>
+            <el-button type="text" size="small" @click="confirmLogout" class="user-action-btn logout-btn">退出登录</el-button>
+          </div>
         </div>
-      </div>
+      </header>
       
-      <!-- 内容 -->
-      <div class="content">
-        <router-view></router-view>
-      </div>
+      <!-- 内容区域 -->
+      <main class="content">
+        <router-view />
+      </main>
     </div>
   </div>
 </template>
 
-<script>
+<script setup>
 import { ref, computed } from 'vue'
-import { useRouter } from 'vue-router'
-import { useUserStore } from '@/stores/user'
+import { useRouter, useRoute } from 'vue-router'
+import { ElMessageBox } from 'element-plus'
 import {
-  DataBoard, User, Avatar, Collection, Connection, 
-  Promotion, Monitor, DataAnalysis, Cpu, Histogram, 
-  Tools, Document, Files, Notebook, Bell, Setting,
-  Fold, Expand, ArrowDown
+  Monitor,
+  Connection,
+  User,
+  DataAnalysis,
+  Tools,
+  Setting,
+  Fold,
+  Expand,
+  ArrowDown
 } from '@element-plus/icons-vue'
+import { useUserStore } from '@/stores/user'
 
-export default {
-  name: 'MainLayout',
-  components: {
-    DataBoard, User, Avatar, Collection, Connection, 
-    Promotion, Monitor, DataAnalysis, Cpu, Histogram, 
-    Tools, Document, Files, Notebook, Bell, Setting,
-    Fold, Expand, ArrowDown
-  },
-  setup() {
-    const router = useRouter()
-    const userStore = useUserStore()
-    const sidebarCollapsed = ref(false)
-    
-    const activeMenu = computed(() => {
-      return router.currentRoute.value.path
-    })
-    
-    const username = computed(() => {
-      return userStore.username || '管理员'
-    })
-    
-    const toggleSidebar = () => {
-      sidebarCollapsed.value = !sidebarCollapsed.value
-    }
-    
-    const handleLogout = () => {
-      userStore.logout()
-      router.push('/login')
-    }
-    
-    return {
-      activeMenu,
-      sidebarCollapsed,
-      username,
-      toggleSidebar,
-      handleLogout
-    }
-  }
+const router = useRouter()
+const route = useRoute()
+const userStore = useUserStore()
+
+const isCollapse = ref(false)
+const username = computed(() => userStore.user?.username || '管理员')
+const activeMenu = computed(() => route.path)
+
+// 切换侧边栏
+const toggleSidebar = () => {
+  isCollapse.value = !isCollapse.value
+}
+
+// 导航到个人资料页面
+const goToProfile = () => {
+  router.push('/profile')
+}
+
+// 导航到修改密码页面
+const goToChangePassword = () => {
+  router.push('/change-password')
+}
+
+// 确认退出登录
+const confirmLogout = () => {
+  ElMessageBox.confirm('确定要退出登录吗?', '提示', {
+    confirmButtonText: '确定',
+    cancelButtonText: '取消',
+    type: 'warning'
+  }).then(() => {
+    userStore.logout()
+    router.push('/login')
+  }).catch(() => {})
 }
 </script>
 
 <style scoped>
-.layout-container {
+.app-container {
   display: flex;
   height: 100vh;
-  overflow: hidden;
 }
 
 .sidebar {
   width: 200px;
-  background-color: #304156;
-  color: white;
   height: 100%;
+  background-color: #2b3a4d;
+  color: #fff;
+  transition: all 0.3s;
   overflow-y: auto;
-  transition: width 0.3s;
+  flex-shrink: 0;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+}
+
+.sidebar.collapsed {
+  width: 64px;
 }
 
 .logo {
   height: 60px;
-  line-height: 60px;
-  text-align: center;
-  font-size: 16px;
-  font-weight: bold;
-  color: white;
-  border-bottom: 1px solid #1f2d3d;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #263445;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.logo h1 {
+  font-size: 18px;
+  font-weight: 500;
+  color: #fff;
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.sidebar-menu {
+  border-right: none;
+}
+
+.sidebar-menu:not(.el-menu--collapse) {
+  width: 100%;
+}
+
+:deep(.el-menu-item) {
+  height: 50px;
+  line-height: 50px;
+  font-size: 14px;
+}
+
+:deep(.el-sub-menu__title) {
+  height: 50px;
+  line-height: 50px;
+  font-size: 14px;
+}
+
+:deep(.el-menu-item.is-active) {
+  background-color: #1890ff !important;
+  color: white !important;
+}
+
+:deep(.el-menu-item:hover) {
+  background-color: #263445 !important;
+}
+
+:deep(.el-sub-menu__title:hover) {
+  background-color: #263445 !important;
+}
+
+:deep(.el-sub-menu .el-menu-item) {
+  min-width: 200px;
+  padding-left: 40px !important;
+  background-color: #1f2d3d;
 }
 
 .main-content {
@@ -209,56 +233,139 @@ export default {
   overflow: hidden;
 }
 
-.navbar {
-  height: 50px;
+.header {
+  height: 60px;
+  background-color: #fff;
   border-bottom: 1px solid #e6e6e6;
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 20px;
-  background-color: white;
 }
 
-.left-menu {
+.header-left, .header-right {
   display: flex;
   align-items: center;
 }
 
-.right-menu {
-  display: flex;
-  align-items: center;
-}
-
-.user-dropdown {
+.collapse-btn {
+  font-size: 20px;
   cursor: pointer;
-  display: flex;
-  align-items: center;
+  transition: all 0.3s;
 }
 
-.avatar {
-  margin-right: 8px;
-  background-color: #409EFF;
+.collapse-btn:hover {
+  color: #409EFF;
+}
+
+/* User dropdown styles */
+.user-dropdown {
+  height: 40px;
+}
+
+.dropdown-link {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  font-size: 14px;
+  color: #333;
+  height: 40px;
+  padding: 0 10px;
+  border-radius: 4px;
+  transition: background-color 0.3s;
+  border: 1px solid transparent;
+}
+
+.dropdown-link:hover {
+  background-color: #f5f7fa;
+  border-color: #e6e6e6;
+}
+
+.username {
+  margin: 0 8px;
+  font-weight: 500;
+}
+
+.user-avatar {
+  background-color: #1890ff !important;
+  color: white !important;
+  font-weight: bold;
 }
 
 .content {
   flex: 1;
   padding: 20px;
   overflow-y: auto;
-  background-color: #f5f7f9;
+  background-color: #f0f2f5;
 }
 
-:deep(.el-menu-item) {
+:deep(.el-dropdown-menu) {
+  min-width: 130px;
+  border-radius: 4px;
+  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
+}
+
+:deep(.el-dropdown-menu__item) {
+  padding: 10px 16px;
+  font-size: 14px;
+  line-height: 20px;
   display: flex;
   align-items: center;
 }
 
-:deep(.el-sub-menu__title) {
-  display: flex;
-  align-items: center;
+:deep(.el-dropdown-menu__item:not(.is-disabled):hover) {
+  background-color: #f5f7fa;
+  color: #409EFF;
 }
 
-:deep(.el-menu-item .el-icon),
-:deep(.el-sub-menu__title .el-icon) {
-  margin-right: 8px;
+:deep(.el-dropdown-menu__item--divided) {
+  margin-top: 6px;
+  border-top: 1px solid #ebeef5;
+}
+
+:deep(.el-dropdown-menu__item--divided:before) {
+  height: 6px;
+  margin-top: -6px;
+}
+
+:deep(.el-popper) {
+  z-index: 9999 !important;
+}
+
+.user-info {
+  display: flex;
+  align-items: center;
+  height: 40px;
+  padding: 0 5px;
+}
+
+.user-avatar {
+  background-color: #1890ff !important;
+  color: white !important;
+  font-weight: bold;
+}
+
+.username {
+  margin: 0 8px;
+  font-weight: 500;
+}
+
+.user-action-btn {
+  margin: 0 2px;
+  font-size: 12px;
+  color: #606266;
+}
+
+.user-action-btn:hover {
+  color: #409EFF;
+}
+
+.logout-btn {
+  color: #f56c6c;
+}
+
+.logout-btn:hover {
+  color: #f56c6c;
+  opacity: 0.8;
 }
 </style> 

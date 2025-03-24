@@ -19,7 +19,7 @@ var (
 
 func init() {
 	// Initialize database manager
-	userMgr = database.GetDB()
+	userMgr = database.GetWrappedDB()
 
 	// Initialize logger
 	userLogger = logger.NewLogger()

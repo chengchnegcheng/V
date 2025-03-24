@@ -12,9 +12,10 @@ func SetupRouter() *gin.Engine {
 	r := gin.Default()
 
 	// 添加中间件
+	r.Use(gin.Recovery())
 	r.Use(middleware.Cors())
 	r.Use(middleware.RequestID())
-	r.Use(middleware.Logger())
+	r.Use(middleware.RequestLogger())
 
 	// 健康检查
 	r.GET("/health", handlers.HandleHealth)

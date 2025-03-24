@@ -34,9 +34,9 @@ func handleLogin(c *gin.Context) {
 		switch err {
 		case auth.ErrInvalidCredentials:
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
-		case auth.ErrUserDisabled:
+		case auth.ErrAccountDisabled:
 			c.JSON(http.StatusForbidden, gin.H{"error": "Account is disabled"})
-		case auth.ErrUserExpired:
+		case auth.ErrAccountExpired:
 			c.JSON(http.StatusForbidden, gin.H{"error": "Account has expired"})
 		default:
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
@@ -62,11 +62,12 @@ func handleRegister(c *gin.Context) {
 	}
 
 	// Set expiration date
-	expireAt := time.Now().AddDate(0, 0, config.GlobalConfig.System.DefaultValidityDays)
+	validityDays := int(config.GlobalConfig.System.DefaultValidityDays)
+	expireAt := time.Now().AddDate(0, 0, validityDays)
 
 	// Create user in database
 	result, err := database.DB.Exec(`
-		INSERT INTO users (username, password, email, expire_at, traffic_limit)
+		INSERT INTO users (username, password, email, expire_at, "traffic_limit")
 		VALUES (?, ?, ?, ?, ?)
 	`, req.Username, hashedPassword, req.Email, expireAt, config.GlobalConfig.System.DefaultTrafficLimit*1024*1024*1024)
 

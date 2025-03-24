@@ -87,6 +87,11 @@ func NewLogger() *Logger {
 	})
 }
 
+// New is an alias for NewLogger
+func New() *Logger {
+	return NewLogger()
+}
+
 // NewLoggerWithConfig creates a new logger instance with specified configuration
 func NewLoggerWithConfig(config Configuration) *Logger {
 	// 创建日志目录
@@ -275,4 +280,14 @@ func (l *Logger) Close() error {
 		return l.fileWriter.Close()
 	}
 	return nil
+}
+
+// Start is a no-op implementation for interface compatibility
+func (l *Logger) Start() error {
+	return nil
+}
+
+// Stop closes the logger resources
+func (l *Logger) Stop() error {
+	return l.Close()
 }

@@ -1,7 +1,7 @@
 package auth
 
 import (
-	"crypto/rand"
+	cryptoRand "crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
 	"errors"
@@ -67,7 +67,8 @@ func (s *Service) Login(username, password string) (*model.User, string, error) 
 		user.LoginAttempts++
 		if user.LoginAttempts >= 5 {
 			// Lock account for 30 minutes
-			user.LockedUntil = time.Now().Add(30 * time.Minute)
+			lockedUntil := time.Now().Add(30 * time.Minute)
+			user.LockedUntil = &lockedUntil
 		}
 		s.db.UpdateUser(user)
 		return nil, "", ErrInvalidCredentials
@@ -75,7 +76,8 @@ func (s *Service) Login(username, password string) (*model.User, string, error) 
 
 	// Reset login attempts on successful login
 	user.LoginAttempts = 0
-	user.LastLoginAt = time.Now()
+	lastLogin := time.Now()
+	user.LastLoginAt = &lastLogin
 	s.db.UpdateUser(user)
 
 	// Generate session token
@@ -163,14 +165,14 @@ func (s *Service) hashPassword(password, salt string) string {
 // generateSalt generates a random salt
 func (s *Service) generateSalt() string {
 	salt := make([]byte, 16)
-	rand.Read(salt)
+	cryptoRand.Read(salt)
 	return base64.StdEncoding.EncodeToString(salt)
 }
 
 // generateToken generates a random session token
 func (s *Service) generateToken() string {
 	token := make([]byte, 32)
-	rand.Read(token)
+	cryptoRand.Read(token)
 	return base64.URLEncoding.EncodeToString(token)
 }
 
@@ -178,6 +180,10 @@ func (s *Service) generateToken() string {
 func (s *Service) generateRandomPassword() string {
 	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 	password := make([]byte, 12)
+
+	// Initialize the random number generator if not initialized
+	rand.Seed(time.Now().UnixNano())
+
 	for i := range password {
 		password[i] = charset[rand.Intn(len(charset))]
 	}

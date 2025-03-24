@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS users (
     enabled BOOLEAN NOT NULL DEFAULT 1,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     expire_at TIMESTAMP NULL,
-    traffic_limit BIGINT NOT NULL DEFAULT 0,
+    "traffic_limit" BIGINT NOT NULL DEFAULT 0,
     used_traffic BIGINT NOT NULL DEFAULT 0
 );
 
@@ -66,10 +66,6 @@ CREATE INDEX IF NOT EXISTS idx_traffic_logs_proxy_id ON traffic_logs(proxy_id);
 CREATE INDEX IF NOT EXISTS idx_traffic_logs_timestamp ON traffic_logs(timestamp);
 CREATE INDEX IF NOT EXISTS idx_ssl_certificates_domain ON ssl_certificates(domain);
 CREATE INDEX IF NOT EXISTS idx_ssl_certificates_expire_at ON ssl_certificates(expire_at);
-
--- Insert default admin user (password: admin)
-INSERT OR IGNORE INTO users (username, email, password, is_admin, enabled)
-VALUES ('admin', 'admin@local', '$2a$10$QZCGj4PQq6gBBX9ePEe0dOqquZPLuFH3jf3LWRvKOoL3Z8.0TvdWq', 1, 1);
 
 -- Insert default system settings
 INSERT OR IGNORE INTO system_settings (key, value) VALUES

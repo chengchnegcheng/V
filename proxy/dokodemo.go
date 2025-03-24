@@ -3,8 +3,10 @@ package proxy
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"sync"
+	"time"
 
 	"v/common"
 	"v/logger"
@@ -20,25 +22,29 @@ type DokodemoConfig struct {
 
 // DokodemoServer Dokodemo 服务器
 type DokodemoServer struct {
-	logger   *logger.Logger
-	proxy    *common.Proxy
-	config   *DokodemoConfig
-	listener net.Listener
-	mu       sync.Mutex
+	Port       int
+	Upload     int64
+	Download   int64
+	LastActive time.Time
+	Running    bool
+	Listener   net.Listener
+	config     *DokodemoConfig
+	log        *logger.Logger
+	mu         sync.Mutex
 }
 
 // NewDokodemoServer 创建 Dokodemo 服务器
-func NewDokodemoServer(logger *logger.Logger, proxy *common.Proxy) (*DokodemoServer, error) {
+func NewDokodemoServer(logger *logger.Logger, proxy *common.ProxyConfig) (*DokodemoServer, error) {
 	// 解析配置
 	var config DokodemoConfig
-	if err := json.Unmarshal([]byte(proxy.Config), &config); err != nil {
+	if err := json.Unmarshal([]byte(proxy.Settings), &config); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config: %v", err)
 	}
 
 	return &DokodemoServer{
-		logger: logger,
-		proxy:  proxy,
+		Port:   proxy.Port,
 		config: &config,
+		log:    logger,
 	}, nil
 }
 
@@ -47,12 +53,12 @@ func (s *DokodemoServer) Start() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", s.proxy.Port))
+	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", s.Port))
 	if err != nil {
 		return fmt.Errorf("failed to listen: %v", err)
 	}
 
-	s.listener = listener
+	s.Listener = listener
 	go s.accept()
 	return nil
 }
@@ -62,18 +68,18 @@ func (s *DokodemoServer) Stop() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if s.listener != nil {
-		if err := s.listener.Close(); err != nil {
+	if s.Listener != nil {
+		if err := s.Listener.Close(); err != nil {
 			return fmt.Errorf("failed to close listener: %v", err)
 		}
-		s.listener = nil
+		s.Listener = nil
 	}
 	return nil
 }
 
 // GetPort 获取端口
 func (s *DokodemoServer) GetPort() int {
-	return s.proxy.Port
+	return s.Port
 }
 
 // GetProtocol 获取协议类型
@@ -84,9 +90,9 @@ func (s *DokodemoServer) GetProtocol() common.ProtocolType {
 // accept 接受连接
 func (s *DokodemoServer) accept() {
 	for {
-		conn, err := s.listener.Accept()
+		conn, err := s.Listener.Accept()
 		if err != nil {
-			s.logger.Error("failed to accept connection", "error", err)
+			s.log.Error("failed to accept connection", "error", err)
 			continue
 		}
 
@@ -101,29 +107,19 @@ func (s *DokodemoServer) handleConnection(conn net.Conn) {
 	// 连接到目标服务器
 	target, err := net.Dial("tcp", fmt.Sprintf("%s:%d", s.config.TargetAddr, s.config.TargetPort))
 	if err != nil {
-		s.logger.Error("failed to connect to target", "error", err)
+		s.log.Error("failed to connect to target", "error", err)
 		return
 	}
 	defer target.Close()
 
 	// 开始转发数据
-	go CopyIO(conn, target)
-	CopyIO(target, conn)
+	go DokoCopyIO(conn, target)
+	DokoCopyIO(target, conn)
 }
 
-// CopyIO 复制数据
-func CopyIO(dst net.Conn, src net.Conn) {
-	buf := make([]byte, 32*1024)
-	for {
-		n, err := src.Read(buf)
-		if err != nil {
-			return
-		}
-
-		if n > 0 {
-			if _, err := dst.Write(buf[:n]); err != nil {
-				return
-			}
-		}
-	}
+// DokoCopyIO copies data between two connections
+func DokoCopyIO(src, dst net.Conn) {
+	defer src.Close()
+	defer dst.Close()
+	io.Copy(dst, src)
 }

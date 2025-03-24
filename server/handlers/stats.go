@@ -16,7 +16,7 @@ var statsMgr *stats.Manager
 
 // InitStatsHandlers 初始化流量统计处理器
 func InitStatsHandlers(log *logger.Logger, db model.DB) {
-	statsMgr = stats.NewStatsManager(log, db)
+	statsMgr = stats.New(log, nil, nil)
 	if err := statsMgr.Start(); err != nil {
 		log.Error("Failed to start stats manager", logger.Fields{
 			"error": err.Error(),

@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"os"
 
+	"crypto"
+
 	"github.com/go-acme/lego/v4/registration"
 )
 
@@ -43,7 +45,7 @@ func (u *User) GetRegistration() *registration.Resource {
 }
 
 // GetPrivateKey returns the user's private key
-func (u *User) GetPrivateKey() *rsa.PrivateKey {
+func (u *User) GetPrivateKey() crypto.PrivateKey {
 	return u.key
 }
 

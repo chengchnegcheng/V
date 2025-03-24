@@ -7,8 +7,8 @@ import (
 	"io"
 	"net"
 
+	"v/common"
 	"v/logger"
-	"v/proxy"
 )
 
 // Config represents Trojan configuration
@@ -24,23 +24,30 @@ type Config struct {
 type Server struct {
 	log      *logger.Logger
 	config   *Config
-	proxy    *proxy.Proxy
+	proxy    *common.ProxyInstance
 	password []byte
 }
 
 // New creates a new Trojan server
-func New(log *logger.Logger, proxy *proxy.Proxy) (*Server, error) {
-	config, ok := proxy.Config.Settings["trojan"].(map[string]interface{})
-	if !ok {
-		return nil, fmt.Errorf("invalid trojan config")
+func New(log *logger.Logger, proxy *common.ProxyInstance) (*Server, error) {
+	var trojanConfig map[string]interface{}
+
+	// Handle different types of settings
+	settingsData := proxy.Settings["trojan"]
+
+	switch v := settingsData.(type) {
+	case map[string]interface{}:
+		trojanConfig = v
+	default:
+		return nil, fmt.Errorf("invalid trojan config type: %T", settingsData)
 	}
 
-	password, ok := config["password"].(string)
+	password, ok := trojanConfig["password"].(string)
 	if !ok {
 		return nil, fmt.Errorf("missing trojan password")
 	}
 
-	ssl, ok := config["ssl"].(map[string]interface{})
+	ssl, ok := trojanConfig["ssl"].(map[string]interface{})
 	if !ok {
 		return nil, fmt.Errorf("missing trojan ssl config")
 	}
@@ -55,7 +62,8 @@ func New(log *logger.Logger, proxy *proxy.Proxy) (*Server, error) {
 		return nil, fmt.Errorf("missing trojan ssl key")
 	}
 
-	trojanConfig := &Config{
+	// Create config struct
+	configObj := &Config{
 		Password: password,
 		SSL: struct {
 			Cert string `json:"cert"`
@@ -73,7 +81,7 @@ func New(log *logger.Logger, proxy *proxy.Proxy) (*Server, error) {
 
 	return &Server{
 		log:      log,
-		config:   trojanConfig,
+		config:   configObj,
 		proxy:    proxy,
 		password: hashedPassword,
 	}, nil

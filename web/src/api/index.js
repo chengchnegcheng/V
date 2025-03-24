@@ -3,7 +3,7 @@ import { ElMessage } from 'element-plus'
 import router from '@/router'
 
 const api = axios.create({
-  baseURL: process.env.VUE_APP_API_URL || '/api',
+  baseURL: import.meta.env.VITE_APP_API_URL || '/api',
   timeout: 10000
 })
 
@@ -24,12 +24,8 @@ api.interceptors.request.use(
 // Response interceptor
 api.interceptors.response.use(
   response => {
-    const res = response.data
-    if (res.code !== 0) {
-      ElMessage.error(res.message || '请求失败')
-      return Promise.reject(new Error(res.message || '请求失败'))
-    }
-    return res.data
+    // 直接返回响应数据，不做额外处理
+    return response.data
   },
   error => {
     if (error.response) {
@@ -38,22 +34,22 @@ api.interceptors.response.use(
           // Unauthorized
           localStorage.removeItem('token')
           router.push('/login')
-          ElMessage.error('登录已过期，请重新登录')
+          ElMessage.error(error.response.data.error || '登录已过期，请重新登录')
           break
         case 403:
           // Forbidden
-          ElMessage.error('没有权限访问')
+          ElMessage.error(error.response.data.error || '没有权限访问')
           break
         case 404:
           // Not Found
-          ElMessage.error('请求的资源不存在')
+          ElMessage.error(error.response.data.error || '请求的资源不存在')
           break
         case 500:
           // Internal Server Error
-          ElMessage.error('服务器内部错误')
+          ElMessage.error(error.response.data.error || '服务器内部错误')
           break
         default:
-          ElMessage.error(error.response.data.message || '请求失败')
+          ElMessage.error(error.response.data.error || '请求失败')
       }
     } else if (error.request) {
       // Request was made but no response was received

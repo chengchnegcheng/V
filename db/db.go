@@ -1,4 +1,4 @@
-package db
+﻿package db
 
 import (
 	"database/sql"
@@ -8,7 +8,7 @@ import (
 	_ "github.com/lib/pq"
 
 	"v/common"
-	"v/errors"
+	verrors "v/errors"
 	"v/logger"
 	"v/model"
 )
@@ -125,7 +125,7 @@ func (d *DB) GetUser(id int64) (*model.User, error) {
 	)
 
 	if err == sql.ErrNoRows {
-		return nil, errors.New(errors.ErrNotFound, "User not found", nil)
+		return nil, verrors.ErrNotFound
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to get user: %v", err)
@@ -153,7 +153,7 @@ func (d *DB) GetUserByUsername(username string) (*model.User, error) {
 	)
 
 	if err == sql.ErrNoRows {
-		return nil, errors.New(errors.ErrNotFound, "User not found", nil)
+		return nil, verrors.ErrNotFound
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to get user: %v", err)
@@ -181,7 +181,7 @@ func (d *DB) GetUserByEmail(email string) (*model.User, error) {
 	)
 
 	if err == sql.ErrNoRows {
-		return nil, errors.New(errors.ErrNotFound, "User not found", nil)
+		return nil, verrors.ErrNotFound
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to get user: %v", err)
@@ -220,7 +220,7 @@ func (d *DB) UpdateUser(user *model.User) error {
 	}
 
 	if rows == 0 {
-		return errors.New(errors.ErrNotFound, "User not found", nil)
+		return verrors.ErrNotFound
 	}
 
 	return nil
@@ -241,7 +241,7 @@ func (d *DB) DeleteUser(id int64) error {
 	}
 
 	if rows == 0 {
-		return errors.New(errors.ErrNotFound, "User not found", nil)
+		return verrors.ErrNotFound
 	}
 
 	return nil
@@ -289,7 +289,7 @@ func (d *DB) ListUsers(offset, limit int) ([]*model.User, error) {
 	return users, nil
 }
 
-// CreateProxy 创建代理
+// CreateProxy 鍒涘缓浠ｇ悊
 func (d *DB) CreateProxy(proxy *common.Proxy) error {
 	query := `
 		INSERT INTO proxies (
@@ -319,7 +319,7 @@ func (d *DB) CreateProxy(proxy *common.Proxy) error {
 	return nil
 }
 
-// GetProxy 获取代理
+// GetProxy 鑾峰彇浠ｇ悊
 func (d *DB) GetProxy(id int64) (*common.Proxy, error) {
 	query := `
 		SELECT id, user_id, protocol, port, config, settings,
@@ -341,7 +341,7 @@ func (d *DB) GetProxy(id int64) (*common.Proxy, error) {
 	)
 
 	if err == sql.ErrNoRows {
-		return nil, errors.New(errors.ErrNotFound, "Proxy not found", nil)
+		return nil, verrors.ErrNotFound
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to get proxy: %v", err)
@@ -351,7 +351,7 @@ func (d *DB) GetProxy(id int64) (*common.Proxy, error) {
 }
 
 // GetProxiesByUser returns all proxies for a user
-func (d *DB) GetProxiesByUser(userID int64) ([]*model.Proxy, error) {
+func (d *DB) GetProxiesByUser(userID int64) ([]*common.Proxy, error) {
 	query := `
 		SELECT id, user_id, port, protocol, listen_addr,
 			remote_addr, enabled, last_active_at,
@@ -364,9 +364,9 @@ func (d *DB) GetProxiesByUser(userID int64) ([]*model.Proxy, error) {
 	}
 	defer rows.Close()
 
-	var proxies []*model.Proxy
+	var proxies []*common.Proxy
 	for rows.Next() {
-		proxy := &model.Proxy{}
+		proxy := &common.Proxy{}
 		err := rows.Scan(
 			&proxy.ID, &proxy.UserID, &proxy.Port,
 			&proxy.Protocol, &proxy.ListenAddr, &proxy.RemoteAddr,
@@ -388,7 +388,7 @@ func (d *DB) GetProxiesByUser(userID int64) ([]*model.Proxy, error) {
 	return proxies, nil
 }
 
-// UpdateProxy 更新代理
+// UpdateProxy 鏇存柊浠ｇ悊
 func (d *DB) UpdateProxy(proxy *common.Proxy) error {
 	query := `
 		UPDATE proxies SET
@@ -423,13 +423,13 @@ func (d *DB) UpdateProxy(proxy *common.Proxy) error {
 	}
 
 	if rows == 0 {
-		return errors.New(errors.ErrNotFound, "Proxy not found", nil)
+		return verrors.ErrNotFound
 	}
 
 	return nil
 }
 
-// DeleteProxy 删除代理
+// DeleteProxy 鍒犻櫎浠ｇ悊
 func (d *DB) DeleteProxy(id int64) error {
 	query := `DELETE FROM proxies WHERE id = $1`
 	result, err := d.db.Exec(query, id)
@@ -443,13 +443,13 @@ func (d *DB) DeleteProxy(id int64) error {
 	}
 
 	if rows == 0 {
-		return errors.New(errors.ErrNotFound, "Proxy not found", nil)
+		return verrors.ErrNotFound
 	}
 
 	return nil
 }
 
-// ListProxies 列出代理
+// ListProxies 鍒楀嚭浠ｇ悊
 func (d *DB) ListProxies(offset, limit int) ([]*common.Proxy, error) {
 	query := `
 		SELECT id, user_id, protocol, port, config, settings,
@@ -492,8 +492,8 @@ func (d *DB) ListProxies(offset, limit int) ([]*common.Proxy, error) {
 func (d *DB) CreateCertificate(cert *model.Certificate) error {
 	query := `
 		INSERT INTO certificates (
-			domain, cert_file, key_file, issued_at,
-			expires_at, auto_renew, created_at, updated_at
+			domain, cert_file, key_file, last_renewed_at,
+			expires_at, status, created_at, updated_at
 		) VALUES (
 			$1, $2, $3, $4, $5, $6, $7, $8
 		) RETURNING id`
@@ -502,7 +502,7 @@ func (d *DB) CreateCertificate(cert *model.Certificate) error {
 	err := d.db.QueryRow(
 		query,
 		cert.Domain, cert.CertFile, cert.KeyFile,
-		cert.IssuedAt, cert.ExpiresAt, cert.AutoRenew,
+		cert.LastRenewedAt, cert.ExpiresAt, cert.Status,
 		cert.CreatedAt, cert.UpdatedAt,
 	).Scan(&id)
 
@@ -518,19 +518,19 @@ func (d *DB) CreateCertificate(cert *model.Certificate) error {
 func (d *DB) GetCertificate(id int64) (*model.Certificate, error) {
 	query := `
 		SELECT id, domain, cert_file, key_file,
-			issued_at, expires_at, auto_renew,
+			last_renewed_at, expires_at, status,
 			created_at, updated_at
 		FROM certificates WHERE id = $1`
 
 	cert := &model.Certificate{}
 	err := d.db.QueryRow(query, id).Scan(
 		&cert.ID, &cert.Domain, &cert.CertFile,
-		&cert.KeyFile, &cert.IssuedAt, &cert.ExpiresAt,
-		&cert.AutoRenew, &cert.CreatedAt, &cert.UpdatedAt,
+		&cert.KeyFile, &cert.LastRenewedAt, &cert.ExpiresAt,
+		&cert.Status, &cert.CreatedAt, &cert.UpdatedAt,
 	)
 
 	if err == sql.ErrNoRows {
-		return nil, errors.New(errors.ErrNotFound, "Certificate not found", nil)
+		return nil, verrors.ErrNotFound
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to get certificate: %v", err)
@@ -543,19 +543,19 @@ func (d *DB) GetCertificate(id int64) (*model.Certificate, error) {
 func (d *DB) GetCertificateByDomain(domain string) (*model.Certificate, error) {
 	query := `
 		SELECT id, domain, cert_file, key_file,
-			issued_at, expires_at, auto_renew,
+			last_renewed_at, expires_at, status,
 			created_at, updated_at
 		FROM certificates WHERE domain = $1`
 
 	cert := &model.Certificate{}
 	err := d.db.QueryRow(query, domain).Scan(
 		&cert.ID, &cert.Domain, &cert.CertFile,
-		&cert.KeyFile, &cert.IssuedAt, &cert.ExpiresAt,
-		&cert.AutoRenew, &cert.CreatedAt, &cert.UpdatedAt,
+		&cert.KeyFile, &cert.LastRenewedAt, &cert.ExpiresAt,
+		&cert.Status, &cert.CreatedAt, &cert.UpdatedAt,
 	)
 
 	if err == sql.ErrNoRows {
-		return nil, errors.New(errors.ErrNotFound, "Certificate not found", nil)
+		return nil, verrors.ErrNotFound
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to get certificate: %v", err)
@@ -569,14 +569,14 @@ func (d *DB) UpdateCertificate(cert *model.Certificate) error {
 	query := `
 		UPDATE certificates SET
 			domain = $1, cert_file = $2, key_file = $3,
-			issued_at = $4, expires_at = $5, auto_renew = $6,
+			last_renewed_at = $4, expires_at = $5, status = $6,
 			updated_at = $7
 		WHERE id = $8`
 
 	result, err := d.db.Exec(
 		query,
 		cert.Domain, cert.CertFile, cert.KeyFile,
-		cert.IssuedAt, cert.ExpiresAt, cert.AutoRenew,
+		cert.LastRenewedAt, cert.ExpiresAt, cert.Status,
 		cert.UpdatedAt, cert.ID,
 	)
 
@@ -590,7 +590,7 @@ func (d *DB) UpdateCertificate(cert *model.Certificate) error {
 	}
 
 	if rows == 0 {
-		return errors.New(errors.ErrNotFound, "Certificate not found", nil)
+		return verrors.ErrNotFound
 	}
 
 	return nil
@@ -611,7 +611,7 @@ func (d *DB) DeleteCertificate(id int64) error {
 	}
 
 	if rows == 0 {
-		return errors.New(errors.ErrNotFound, "Certificate not found", nil)
+		return verrors.ErrNotFound
 	}
 
 	return nil
@@ -621,7 +621,7 @@ func (d *DB) DeleteCertificate(id int64) error {
 func (d *DB) ListCertificates(offset, limit int) ([]*model.Certificate, error) {
 	query := `
 		SELECT id, domain, cert_file, key_file,
-			issued_at, expires_at, auto_renew,
+			last_renewed_at, expires_at, status,
 			created_at, updated_at
 		FROM certificates
 		ORDER BY id
@@ -638,8 +638,8 @@ func (d *DB) ListCertificates(offset, limit int) ([]*model.Certificate, error) {
 		cert := &model.Certificate{}
 		err := rows.Scan(
 			&cert.ID, &cert.Domain, &cert.CertFile,
-			&cert.KeyFile, &cert.IssuedAt, &cert.ExpiresAt,
-			&cert.AutoRenew, &cert.CreatedAt, &cert.UpdatedAt,
+			&cert.KeyFile, &cert.LastRenewedAt, &cert.ExpiresAt,
+			&cert.Status, &cert.CreatedAt, &cert.UpdatedAt,
 		)
 
 		if err != nil {
@@ -694,7 +694,7 @@ func (d *DB) GetTrafficStats(userID int64) (*model.TrafficStats, error) {
 	)
 
 	if err == sql.ErrNoRows {
-		return nil, errors.New(errors.ErrNotFound, "Traffic stats not found", nil)
+		return nil, verrors.ErrNotFound
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to get traffic stats: %v", err)
@@ -727,7 +727,7 @@ func (d *DB) UpdateTrafficStats(stats *model.TrafficStats) error {
 	}
 
 	if rows == 0 {
-		return errors.New(errors.ErrNotFound, "Traffic stats not found", nil)
+		return verrors.ErrNotFound
 	}
 
 	return nil
@@ -839,7 +839,7 @@ func (d *DB) GetEvent(id int64) (*model.Event, error) {
 	)
 
 	if err == sql.ErrNoRows {
-		return nil, errors.New(errors.ErrNotFound, "Event not found", nil)
+		return nil, verrors.ErrNotFound
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to get event: %v", err)
@@ -927,7 +927,7 @@ func (d *DB) GetBackup(id int64) (*model.Backup, error) {
 	)
 
 	if err == sql.ErrNoRows {
-		return nil, errors.New(errors.ErrNotFound, "Backup not found", nil)
+		return nil, verrors.ErrNotFound
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to get backup: %v", err)
@@ -989,145 +989,8 @@ func (d *DB) DeleteBackup(id int64) error {
 	}
 
 	if rows == 0 {
-		return errors.New(errors.ErrNotFound, "Backup not found", nil)
+		return verrors.ErrNotFound
 	}
-
-	return nil
-}
-
-// CreateDailyStats 创建每日流量统计
-func (db *DB) CreateDailyStats(stats *model.DailyStats) error {
-	return db.db.Create(stats).Error
-}
-
-// DeleteDailyStatsBefore 删除指定日期之前的每日流量统计
-func (db *DB) DeleteDailyStatsBefore(date time.Time) error {
-	return db.db.Where("date < ?", date).Delete(&model.DailyStats{}).Error
-}
-
-// ListDailyStatsByUserID 获取用户的每日流量统计
-func (db *DB) ListDailyStatsByUserID(userID uint, startDate, endDate time.Time) ([]model.DailyStats, error) {
-	var stats []model.DailyStats
-	err := db.db.Where("user_id = ? AND date BETWEEN ? AND ?", userID, startDate, endDate).
-		Order("date DESC").
-		Find(&stats).Error
-	return stats, err
-}
-
-// ListProtocolStatsByProtocolID 获取协议的流量统计
-func (db *DB) ListProtocolStatsByProtocolID(protocolID uint, startDate, endDate time.Time) ([]model.TrafficStats, error) {
-	var stats []model.TrafficStats
-	err := db.db.Where("protocol_id = ? AND created_at BETWEEN ? AND ?", protocolID, startDate, endDate).
-		Order("created_at DESC").
-		Find(&stats).Error
-	return stats, err
-}
-
-// GetTrafficStats 获取流量统计
-func (d *DB) GetTrafficStats(userID uint) (*model.TrafficStats, error) {
-	query := `
-		SELECT 
-			COALESCE(SUM(up), 0) as upload,
-			COALESCE(SUM(down), 0) as download
-		FROM traffic
-		WHERE user_id = $1`
-
-	var stats model.TrafficStats
-	err := d.db.QueryRow(query, userID).Scan(&stats.Upload, &stats.Download)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get traffic stats: %v", err)
-	}
-
-	// 获取最近一分钟的流量用于计算速度
-	query = `
-		SELECT up, down, created_at
-		FROM traffic
-		WHERE user_id = $1 AND created_at > $2
-		ORDER BY created_at DESC`
-
-	rows, err := d.db.Query(query, userID, time.Now().Add(-time.Minute))
-	if err != nil {
-		return nil, fmt.Errorf("failed to get recent traffic: %v", err)
-	}
-	defer rows.Close()
-
-	var recentTraffic []struct {
-		Up        int64
-		Down      int64
-		CreatedAt time.Time
-	}
-
-	for rows.Next() {
-		var t struct {
-			Up        int64
-			Down      int64
-			CreatedAt time.Time
-		}
-		if err := rows.Scan(&t.Up, &t.Down, &t.CreatedAt); err != nil {
-			return nil, fmt.Errorf("failed to scan recent traffic: %v", err)
-		}
-		recentTraffic = append(recentTraffic, t)
-	}
-
-	if len(recentTraffic) > 0 {
-		duration := time.Since(recentTraffic[len(recentTraffic)-1].CreatedAt).Seconds()
-		if duration > 0 {
-			var totalUp, totalDown int64
-			for _, t := range recentTraffic {
-				totalUp += t.Up
-				totalDown += t.Down
-			}
-			stats.UpSpeed = float64(totalUp) / duration
-			stats.DownSpeed = float64(totalDown) / duration
-		}
-	}
-
-	return &stats, nil
-}
-
-// CreateTrafficRecord 创建流量记录
-func (d *DB) CreateTrafficRecord(traffic *model.Traffic) error {
-	query := `
-		INSERT INTO traffic (
-			user_id, proxy_id, up, down,
-			created_at, updated_at
-		) VALUES (
-			$1, $2, $3, $4, $5, $6
-		) RETURNING id`
-
-	var id uint
-	err := d.db.QueryRow(
-		query,
-		traffic.UserID, traffic.ProxyID,
-		traffic.Up, traffic.Down,
-		traffic.CreatedAt, traffic.UpdatedAt,
-	).Scan(&id)
-
-	if err != nil {
-		return fmt.Errorf("failed to create traffic record: %v", err)
-	}
-
-	traffic.ID = id
-	return nil
-}
-
-// CleanupTraffic 清理过期流量记录
-func (d *DB) CleanupTraffic(before time.Time) error {
-	query := `DELETE FROM traffic WHERE created_at < $1`
-	result, err := d.db.Exec(query, before)
-	if err != nil {
-		return fmt.Errorf("failed to cleanup traffic: %v", err)
-	}
-
-	rows, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("failed to get rows affected: %v", err)
-	}
-
-	d.log.Info("Cleaned up traffic records", logger.Fields{
-		"before": before,
-		"rows":   rows,
-	})
 
 	return nil
 }

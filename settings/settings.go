@@ -114,6 +114,15 @@ type AdminSettings struct {
 	Email string `json:"email" env:"ADMIN_EMAIL"`
 }
 
+// XraySettings represents xray settings
+type XraySettings struct {
+	Version       string        `json:"version" env:"XRAY_VERSION"`
+	AutoUpdate    bool          `json:"auto_update" env:"XRAY_AUTO_UPDATE"`
+	CheckInterval time.Duration `json:"check_interval" env:"XRAY_CHECK_INTERVAL"`
+	CustomConfig  bool          `json:"custom_config" env:"XRAY_CUSTOM_CONFIG"`
+	ConfigPath    string        `json:"config_path" env:"XRAY_CONFIG_PATH"`
+}
+
 // Settings represents system settings
 type Settings struct {
 	// Site settings
@@ -145,6 +154,15 @@ type Settings struct {
 
 	// Admin settings
 	Admin AdminSettings `json:"admin"`
+
+	// Xray settings
+	Xray XraySettings `json:"xray"`
+
+	// Protocol settings
+	Protocols map[string]bool `json:"protocols"`
+
+	// Transport settings
+	Transports map[string]bool `json:"transports"`
 }
 
 // Manager represents a settings manager
@@ -207,6 +225,52 @@ func (m *Manager) Load() error {
 		return fmt.Errorf("failed to load settings from environment: %v", err)
 	}
 
+	// 确保协议和传输层设置存在，不为nil
+	if m.settings.Protocols == nil {
+		m.settings.Protocols = make(map[string]bool)
+	}
+	if m.settings.Transports == nil {
+		m.settings.Transports = make(map[string]bool)
+	}
+
+	// 设置默认值
+	// 默认协议
+	if _, exists := m.settings.Protocols["trojan"]; !exists {
+		m.settings.Protocols["trojan"] = true
+	}
+	if _, exists := m.settings.Protocols["vmess"]; !exists {
+		m.settings.Protocols["vmess"] = true
+	}
+	if _, exists := m.settings.Protocols["vless"]; !exists {
+		m.settings.Protocols["vless"] = true
+	}
+	if _, exists := m.settings.Protocols["shadowsocks"]; !exists {
+		m.settings.Protocols["shadowsocks"] = true
+	}
+	if _, exists := m.settings.Protocols["socks"]; !exists {
+		m.settings.Protocols["socks"] = false
+	}
+	if _, exists := m.settings.Protocols["http"]; !exists {
+		m.settings.Protocols["http"] = false
+	}
+
+	// 默认传输层
+	if _, exists := m.settings.Transports["tcp"]; !exists {
+		m.settings.Transports["tcp"] = true
+	}
+	if _, exists := m.settings.Transports["ws"]; !exists {
+		m.settings.Transports["ws"] = true
+	}
+	if _, exists := m.settings.Transports["http2"]; !exists {
+		m.settings.Transports["http2"] = true
+	}
+	if _, exists := m.settings.Transports["grpc"]; !exists {
+		m.settings.Transports["grpc"] = true
+	}
+	if _, exists := m.settings.Transports["quic"]; !exists {
+		m.settings.Transports["quic"] = false
+	}
+
 	return nil
 }
 
@@ -214,6 +278,9 @@ func (m *Manager) Load() error {
 func (m *Manager) loadFromFile() error {
 	// Check if file exists
 	if _, err := os.Stat(m.settingsPath); os.IsNotExist(err) {
+		m.log.Warn("Settings file does not exist, using defaults", logger.Fields{
+			"path": m.settingsPath,
+		})
 		return nil
 	}
 
@@ -223,10 +290,22 @@ func (m *Manager) loadFromFile() error {
 		return fmt.Errorf("failed to read settings file: %v", err)
 	}
 
+	m.log.Debug("Read settings file content", logger.Fields{
+		"content_length": len(data),
+		"path":           m.settingsPath,
+	})
+
 	// Unmarshal settings
 	if err := json.Unmarshal(data, m.settings); err != nil {
 		return fmt.Errorf("failed to unmarshal settings: %v", err)
 	}
+
+	// 记录关键设置
+	m.log.Info("Settings loaded from file", logger.Fields{
+		"auto_update": m.settings.Xray.AutoUpdate,
+		"protocols":   m.settings.Protocols != nil,
+		"transports":  m.settings.Transports != nil,
+	})
 
 	return nil
 }
@@ -300,18 +379,13 @@ func (m *Manager) Save() error {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	// Marshal settings
-	data, err := json.MarshalIndent(m.settings, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to marshal settings: %v", err)
-	}
+	// 记录保存前的设置
+	m.log.Debug("Saving settings", logger.Fields{
+		"auto_update":   m.settings.Xray.AutoUpdate,
+		"settings_path": m.settingsPath,
+	})
 
-	// Write file
-	if err := os.WriteFile(m.settingsPath, data, 0644); err != nil {
-		return fmt.Errorf("failed to write settings file: %v", err)
-	}
-
-	return nil
+	return m.saveNoLock()
 }
 
 // Get returns the current settings
@@ -329,13 +403,122 @@ func (m *Manager) Update(settings *Settings) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// Update settings
-	m.settings = settings
+	// 记录更新前的重要设置
+	oldAutoUpdate := m.settings.Xray.AutoUpdate
 
-	// Save settings
-	if err := m.Save(); err != nil {
+	// 记录完整的更新内容
+	m.log.Debug("Updating settings", logger.Fields{
+		"old_auto_update": m.settings.Xray.AutoUpdate,
+		"new_auto_update": settings.Xray.AutoUpdate,
+		"xray_settings":   settings.Xray,
+	})
+
+	// 手动更新Xray设置
+	m.settings.Xray.AutoUpdate = settings.Xray.AutoUpdate
+	m.settings.Xray.CheckInterval = settings.Xray.CheckInterval
+	m.settings.Xray.CustomConfig = settings.Xray.CustomConfig
+	m.settings.Xray.ConfigPath = settings.Xray.ConfigPath
+	m.settings.Xray.Version = settings.Xray.Version
+
+	// 手动更新协议和传输层设置
+	if settings.Protocols != nil {
+		// 如果m.settings.Protocols为nil，先初始化
+		if m.settings.Protocols == nil {
+			m.settings.Protocols = make(map[string]bool)
+		}
+
+		// 复制新的协议设置
+		for k, v := range settings.Protocols {
+			m.settings.Protocols[k] = v
+		}
+	}
+
+	if settings.Transports != nil {
+		// 如果m.settings.Transports为nil，先初始化
+		if m.settings.Transports == nil {
+			m.settings.Transports = make(map[string]bool)
+		}
+
+		// 复制新的传输层设置
+		for k, v := range settings.Transports {
+			m.settings.Transports[k] = v
+		}
+	}
+
+	// 记录变更
+	if oldAutoUpdate != m.settings.Xray.AutoUpdate {
+		m.log.Info("Xray auto update setting changed", logger.Fields{
+			"old_value": oldAutoUpdate,
+			"new_value": m.settings.Xray.AutoUpdate,
+		})
+	}
+
+	// 在解锁前保存设置
+	if err := m.saveNoLock(); err != nil {
 		return fmt.Errorf("failed to save settings: %v", err)
 	}
+
+	// 验证保存后的设置
+	fileData, err := os.ReadFile(m.settingsPath)
+	if err == nil {
+		var savedSettings Settings
+		if err := json.Unmarshal(fileData, &savedSettings); err == nil {
+			m.log.Debug("Verified saved settings", logger.Fields{
+				"auto_update_in_file": savedSettings.Xray.AutoUpdate,
+			})
+		}
+	}
+
+	return nil
+}
+
+// saveNoLock saves settings without acquiring the lock
+func (m *Manager) saveNoLock() error {
+	// 在保存前检查protocols和transports是否有效
+	if m.settings.Protocols == nil {
+		m.settings.Protocols = make(map[string]bool)
+	}
+	if m.settings.Transports == nil {
+		m.settings.Transports = make(map[string]bool)
+	}
+
+	// 添加日志记录关键设置
+	m.log.Debug("Settings before saving", logger.Fields{
+		"auto_update":      m.settings.Xray.AutoUpdate,
+		"check_interval":   m.settings.Xray.CheckInterval,
+		"custom_config":    m.settings.Xray.CustomConfig,
+		"protocols_count":  len(m.settings.Protocols),
+		"transports_count": len(m.settings.Transports),
+	})
+
+	// Marshal settings
+	data, err := json.MarshalIndent(m.settings, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal settings: %v", err)
+	}
+
+	// 验证生成的JSON中是否包含正确的auto_update值
+	var testSettings map[string]interface{}
+	if err := json.Unmarshal(data, &testSettings); err == nil {
+		if xray, ok := testSettings["xray"].(map[string]interface{}); ok {
+			if autoUpdate, ok := xray["auto_update"].(bool); ok {
+				m.log.Debug("Verified JSON before saving", logger.Fields{
+					"auto_update_in_json": autoUpdate,
+				})
+			}
+		}
+	}
+
+	// Write file
+	if err := os.WriteFile(m.settingsPath, data, 0644); err != nil {
+		return fmt.Errorf("failed to write settings file: %v", err)
+	}
+
+	m.log.Info("Settings saved successfully", logger.Fields{
+		"settings_path": m.settingsPath,
+		"auto_update":   m.settings.Xray.AutoUpdate,
+		"size":          len(data),
+	})
 
 	return nil
 }

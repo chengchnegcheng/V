@@ -134,11 +134,28 @@ func (m *ProtocolManager) GenerateTrojanLink(protocol *model.Protocol) (string, 
 		Path:     settings.Path,
 	}
 
-	return fmt.Sprintf("trojan://%s@%s:%s?security=tls&path=%s#%s",
+	// 构建参数列表
+	params := []string{"security=tls"}
+
+	// 添加 SNI 参数，优先使用专门的SNI字段，如果不存在则使用Host
+	sni := settings.SNI
+	if sni == "" {
+		sni = settings.Host
+	}
+
+	params = append(params, fmt.Sprintf("sni=%s", sni))
+
+	// 添加 Path 参数，如果存在
+	if settings.Path != "" {
+		params = append(params, fmt.Sprintf("path=%s", url.QueryEscape(settings.Path)))
+	}
+
+	// 构建完整链接
+	return fmt.Sprintf("trojan://%s@%s:%s?%s#%s",
 		url.QueryEscape(link.Password),
 		link.Host,
 		link.Port,
-		url.QueryEscape(link.Path),
+		strings.Join(params, "&"),
 		url.QueryEscape(protocol.Name),
 	), nil
 }

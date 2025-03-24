@@ -43,6 +43,7 @@ type TrojanSettings struct {
 	Host     string `json:"host"`
 	Path     string `json:"path"`
 	TLS      bool   `json:"tls"`
+	SNI      string `json:"sni"`
 }
 
 // ShadowsocksSettings Shadowsocks 协议配置

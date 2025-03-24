@@ -19,9 +19,9 @@ var (
 )
 
 func init() {
-	db := database.GetDB()
+	db := database.GetWrappedDB()
 	protocolLogger = logger.NewLogger()
-	settingsMgr = settings.New(protocolLogger)
+	settingsMgr := settings.New(protocolLogger)
 	protocolMgr = protocol.New(protocolLogger, settingsMgr, db)
 }
 
@@ -41,10 +41,25 @@ func HandleCreateProtocol(c *gin.Context) {
 	}
 
 	userID := c.GetInt64("user_id")
-	protocolType := model.ProtocolType(req.Type)
 
-	protocol, err := protocolMgr.Create(userID, protocolType, req.Name, req.Port, settings)
+	// Create a new Protocol object
+	protocol := &model.Protocol{
+		UserID: userID,
+		Type:   req.Type,
+		Name:   req.Name,
+		Port:   req.Port,
+	}
+
+	// Set the settings as JSON
+	settingsJSON, err := json.Marshal(settings)
 	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to serialize settings"})
+		return
+	}
+	protocol.Settings = settingsJSON
+
+	// Create the protocol
+	if err := protocolMgr.Create(protocol); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}

@@ -69,3 +69,39 @@ func (m *Manager) GetSupportedProtocolTypes() []string {
 		"http",
 	}
 }
+
+// Create creates a new protocol
+func (m *Manager) Create(protocol *model.Protocol) error {
+	return m.db.CreateProtocol(protocol)
+}
+
+// Get retrieves a protocol by ID
+func (m *Manager) Get(id int64) (*model.Protocol, error) {
+	return m.db.GetProtocol(id)
+}
+
+// GetByUserID retrieves protocols by user ID
+func (m *Manager) GetByUserID(userID int64) ([]*model.Protocol, error) {
+	return m.db.GetProtocolsByUserID(userID)
+}
+
+// Update updates a protocol
+func (m *Manager) Update(protocol *model.Protocol) error {
+	return m.db.UpdateProtocol(protocol)
+}
+
+// Delete deletes a protocol
+func (m *Manager) Delete(id int64) error {
+	return m.db.DeleteProtocol(id)
+}
+
+// Enable enables a protocol
+func (m *Manager) Enable(id int64) error {
+	protocol, err := m.db.GetProtocol(id)
+	if err != nil {
+		return err
+	}
+
+	protocol.Enable = true
+	return m.db.UpdateProtocol(protocol)
+}

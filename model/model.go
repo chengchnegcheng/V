@@ -2,13 +2,15 @@ package model
 
 import (
 	"crypto"
-	"runtime"
 	"time"
 
 	"v/common"
 
 	"github.com/go-acme/lego/v4/registration"
 )
+
+// 记录应用启动时间
+var startTime = time.Now()
 
 // Base 基础模型
 type Base struct {
@@ -35,6 +37,7 @@ type User struct {
 	TrafficLimit  int64                  `json:"traffic_limit" db:"traffic_limit"`
 	TrafficUsed   int64                  `json:"traffic_used" db:"traffic_used"`
 	ExpireAt      *time.Time             `json:"expire_at" db:"expire_at"`
+	Enabled       bool                   `json:"enabled" db:"enabled"` // 用户是否启用
 }
 
 // GetEmail 获取用户邮箱
@@ -119,7 +122,7 @@ type TrafficStats struct {
 	DownSpeed    float64   `json:"down_speed"`
 }
 
-// DailyStats 每日流量统计
+// DailyStats represents daily traffic statistics
 type DailyStats struct {
 	Base
 	UserID   int64     `json:"user_id" db:"user_id"`
@@ -305,84 +308,6 @@ type LogQuery struct {
 	PageSize  int       `json:"page_size"`
 }
 
-// GetSystemInfo 获取系统信息
-func GetSystemInfo() *SystemInfo {
-	return &SystemInfo{
-		Platform:  runtime.GOOS,
-		Arch:      runtime.GOARCH,
-		CPUs:      runtime.NumCPU(),
-		GoVersion: runtime.Version(),
-	}
-}
-
-// GetSystemStats 获取系统统计信息
-func GetSystemStats() (*SystemStats, error) {
-	// 获取CPU使用率
-	cpuUsage, err := getCPUUsage()
-	if err != nil {
-		return nil, err
-	}
-
-	// 获取内存使用情况
-	memUsage, err := getMemoryUsage()
-	if err != nil {
-		return nil, err
-	}
-
-	// 获取磁盘使用情况
-	diskUsage, err := getDiskUsage()
-	if err != nil {
-		return nil, err
-	}
-
-	// 获取系统负载
-	loadAvg, err := getLoadAverage()
-	if err != nil {
-		return nil, err
-	}
-
-	// 获取网络流量
-	netIO, err := getNetworkIO()
-	if err != nil {
-		return nil, err
-	}
-
-	return &SystemStats{
-		CPU:     cpuUsage,
-		Memory:  memUsage,
-		Disk:    diskUsage,
-		Load:    loadAvg,
-		Network: netIO,
-		Time:    time.Now().Unix(),
-	}, nil
-}
-
-// 以下是辅助函数，实际实现中应根据不同操作系统提供具体实现
-func getCPUUsage() (float64, error) {
-	// 示例实现，实际应根据操作系统获取
-	return 0.0, nil
-}
-
-func getMemoryUsage() (MemoryStats, error) {
-	// 示例实现，实际应根据操作系统获取
-	return MemoryStats{}, nil
-}
-
-func getDiskUsage() (DiskStats, error) {
-	// 示例实现，实际应根据操作系统获取
-	return DiskStats{}, nil
-}
-
-func getLoadAverage() ([]float64, error) {
-	// 示例实现，实际应根据操作系统获取
-	return []float64{0.0, 0.0, 0.0}, nil
-}
-
-func getNetworkIO() (NetworkStats, error) {
-	// 示例实现，实际应根据操作系统获取
-	return NetworkStats{}, nil
-}
-
 // SystemTrafficStats 系统流量统计
 type SystemTrafficStats struct {
 	TotalUpload      int64     `json:"total_upload"`
@@ -410,4 +335,39 @@ type UserTrafficLimit struct {
 	TotalDownload int64     `json:"total_download"`
 	TrafficLimit  int64     `json:"traffic_limit"`
 	UpdatedAt     time.Time `json:"updated_at"`
+}
+
+// ProxyStats represents proxy usage statistics
+type ProxyStats struct {
+	ProxyID   int64     `json:"proxy_id" db:"proxy_id"`
+	Upload    int64     `json:"upload" db:"upload"`
+	Download  int64     `json:"download" db:"download"`
+	Total     int64     `json:"total" db:"total"`
+	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
+}
+
+// ProxyService defines the proxy service interface
+type ProxyService interface {
+	CreateProxy(proxy *Proxy) error
+	GetProxy(id int64) (*Proxy, error)
+	GetProxyByPort(port int) (*Proxy, error)
+	ListProxies(userID int64) ([]*Proxy, error)
+	UpdateProxy(proxy *Proxy) error
+	DeleteProxy(id int64) error
+	EnableProxy(id int64) error
+	DisableProxy(id int64) error
+	GetProxyStats(id int64) (*ProxyStats, error)
+}
+
+// Proxy represents a proxy configuration
+type Proxy struct {
+	Base
+	UserID   int64      `json:"user_id" db:"user_id"`
+	Protocol string     `json:"protocol" db:"protocol"`
+	Port     int        `json:"port" db:"port"`
+	Settings string     `json:"settings" db:"settings"`
+	Enabled  bool       `json:"enabled" db:"enabled"`
+	Upload   int64      `json:"upload" db:"upload"`
+	Download int64      `json:"download" db:"download"`
+	ExpireAt *time.Time `json:"expire_at" db:"expire_at"`
 }

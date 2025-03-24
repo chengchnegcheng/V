@@ -11,11 +11,11 @@ import (
 
 // SSLHandler handles SSL certificate management
 type SSLHandler struct {
-	certManager *ssl.CertificateManager
+	certManager *ssl.LocalCertManager
 }
 
 // NewSSLHandler creates a new SSL handler
-func NewSSLHandler(certManager *ssl.CertificateManager) *SSLHandler {
+func NewSSLHandler(certManager *ssl.LocalCertManager) *SSLHandler {
 	return &SSLHandler{
 		certManager: certManager,
 	}
@@ -64,7 +64,7 @@ func (h *SSLHandler) HandleGetCertificate(c *gin.Context) {
 		return
 	}
 
-	cert, err := h.certManager.GetCertificate(domain)
+	cert, err := h.certManager.GetByDomain(domain)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{
 			"error": "certificate not found",
@@ -96,15 +96,13 @@ func (h *SSLHandler) HandleCreateCertificate(c *gin.Context) {
 		return
 	}
 
-	cert, err := h.certManager.GetCertificate(req.Domain)
+	cert, err := h.certManager.Create(req.Domain, req.AutoRenew)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "failed to create certificate",
+			"error": "failed to create certificate: " + err.Error(),
 		})
 		return
 	}
-
-	cert.AutoRenew = req.AutoRenew
 
 	c.JSON(http.StatusCreated, gin.H{
 		"certificate": Certificate{
@@ -126,15 +124,25 @@ func (h *SSLHandler) HandleRenewCertificate(c *gin.Context) {
 		return
 	}
 
-	err := h.certManager.RenewCertificate(domain)
+	// Get certificate first to get its ID
+	cert, err := h.certManager.GetByDomain(domain)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "failed to renew certificate",
+		c.JSON(http.StatusNotFound, gin.H{
+			"error": "certificate not found",
 		})
 		return
 	}
 
-	cert, err := h.certManager.GetCertificate(domain)
+	err = h.certManager.Renew(cert.ID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "failed to renew certificate: " + err.Error(),
+		})
+		return
+	}
+
+	// Get the updated certificate
+	cert, err = h.certManager.GetByDomain(domain)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": "failed to get renewed certificate",
@@ -162,17 +170,20 @@ func (h *SSLHandler) HandleDeleteCertificate(c *gin.Context) {
 		return
 	}
 
-	err := h.certManager.DeleteCertificate(domain)
+	// Get certificate first to get its ID
+	cert, err := h.certManager.GetByDomain(domain)
 	if err != nil {
-		if err.Error() == "certificate not found" {
-			c.JSON(http.StatusNotFound, gin.H{
-				"error": "certificate not found",
-			})
-		} else {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"error": "failed to delete certificate",
-			})
-		}
+		c.JSON(http.StatusNotFound, gin.H{
+			"error": "certificate not found",
+		})
+		return
+	}
+
+	err = h.certManager.Delete(cert.ID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "failed to delete certificate: " + err.Error(),
+		})
 		return
 	}
 

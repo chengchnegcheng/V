@@ -1,5 +1,15 @@
 <template>
   <div class="system-monitor">
+    <!-- 错误提示条，添加条件控制只在错误时显示 -->
+    <el-alert
+      v-if="apiError"
+      title="获取系统状态失败，使用模拟数据"
+      type="error"
+      show-icon
+      :closable="false"
+      style="margin-bottom: 20px"
+    />
+    
     <el-card class="box-card">
       <template #header>
         <div class="card-header">
@@ -83,7 +93,7 @@
           <el-descriptions-item label="内核版本">{{ systemInfo.kernel }}</el-descriptions-item>
           <el-descriptions-item label="主机名">{{ systemInfo.hostname }}</el-descriptions-item>
           <el-descriptions-item label="运行时间">{{ systemInfo.uptime }}</el-descriptions-item>
-          <el-descriptions-item label="负载均衡">{{ systemInfo.load.join(' / ') }}</el-descriptions-item>
+          <el-descriptions-item label="负载均衡">{{ systemInfo.load ? systemInfo.load.join(' / ') : '0 / 0 / 0' }}</el-descriptions-item>
           <el-descriptions-item label="IP 地址">{{ systemInfo.ipAddress }}</el-descriptions-item>
         </el-descriptions>
       </el-card>
@@ -126,6 +136,8 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import * as echarts from 'echarts'
+import systemApi from '@/api/system'
+import { ElMessage } from 'element-plus'
 
 // 图表引用
 const resourceChartRef = ref(null)
@@ -135,6 +147,7 @@ let diskChart = null
 
 // 数据状态
 const loading = ref(false)
+const apiError = ref(false)
 const processSearch = ref('')
 const cpuUsage = ref(0)
 const memoryUsage = ref(0)
@@ -292,17 +305,44 @@ const generateTimePoints = (count) => {
 
 // 生成模拟数据
 const generateMockData = () => {
+  // 检测操作系统类型
+  let osType = 'Unknown'
+  let kernelVersion = 'Unknown'
+  
+  if (navigator.platform.indexOf('Win') !== -1) {
+    osType = 'Windows'
+    kernelVersion = 'Windows NT 10.0'
+  } else if (navigator.platform.indexOf('Mac') !== -1) {
+    osType = 'macOS'
+    kernelVersion = 'Darwin 21.6.0'
+  } else if (navigator.platform.indexOf('Linux') !== -1) {
+    osType = 'Linux'
+    kernelVersion = 'Linux 5.15.0-76-generic'
+  }
+  
+  // 系统信息
+  systemInfo.value = {
+    os: osType,
+    kernel: kernelVersion,
+    hostname: window.location.hostname || 'localhost',
+    uptime: '0 days, 0 hours, 0 minutes',
+    load: osType === 'Windows' ? [0, 0, 0] : [0.8, 1.0, 1.2],
+    ipAddress: '0.0.0.0'
+  }
+  
   // CPU信息
-  cpuUsage.value = Math.floor(Math.random() * 60) + 10
+  cpuUsage.value = 45
   cpuInfo.value = {
     cores: 8,
-    model: 'Intel Core i7-10700K @ 3.80GHz'
+    model: osType === 'Windows' ? 'Intel Core i7-10700K (Windows)' : 
+           osType === 'macOS' ? 'Apple M1 (macOS)' : 
+           'Intel Xeon E5-2680 (Linux)'
   }
   
   // 内存信息
   const totalMem = 16 * 1024 * 1024 * 1024 // 16GB
-  const usedMem = totalMem * (Math.random() * 0.5 + 0.2)
-  memoryUsage.value = Math.floor((usedMem / totalMem) * 100)
+  const usedMem = totalMem * 0.4 // 使用40%
+  memoryUsage.value = 40
   memoryInfo.value = {
     used: usedMem,
     total: totalMem
@@ -310,39 +350,33 @@ const generateMockData = () => {
   
   // 磁盘信息
   const totalDisk = 500 * 1024 * 1024 * 1024 // 500GB
-  const usedDisk = totalDisk * (Math.random() * 0.6 + 0.2)
-  diskUsage.value = Math.floor((usedDisk / totalDisk) * 100)
+  const usedDisk = totalDisk * 0.35 // 使用35%
+  diskUsage.value = 35
   diskInfo.value = {
     used: usedDisk,
     total: totalDisk
   }
   
-  // 系统信息
-  systemInfo.value = {
-    os: 'Ubuntu 22.04.2 LTS',
-    kernel: 'Linux 5.15.0-76-generic',
-    hostname: 'v-server',
-    uptime: '10 days, 5 hours, 30 minutes',
-    load: [0.8, 1.2, 1.5],
-    ipAddress: '192.168.1.100'
+  // 进程信息 - 根据操作系统使用不同的进程列表
+  if (osType === 'Windows') {
+    processes.value = [
+      { pid: 4, name: 'System', user: 'SYSTEM', cpu: '0.1', memory: '0.5', memoryUsed: 50 * 1024 * 1024, started: '2023-03-10 00:00:00', state: 'running' },
+      { pid: 728, name: 'svchost.exe', user: 'SYSTEM', cpu: '1.2', memory: '0.8', memoryUsed: 80 * 1024 * 1024, started: '2023-03-15 08:30:00', state: 'running' },
+      { pid: 1524, name: 'v.exe', user: 'USER', cpu: '2.5', memory: '1.2', memoryUsed: 120 * 1024 * 1024, started: '2023-03-15 08:31:20', state: 'running' }
+    ]
+  } else if (osType === 'macOS') {
+    processes.value = [
+      { pid: 1, name: 'launchd', user: 'root', cpu: '0.1', memory: '0.3', memoryUsed: 30 * 1024 * 1024, started: '2023-03-10 00:00:00', state: 'running' },
+      { pid: 324, name: 'WindowServer', user: 'root', cpu: '1.5', memory: '1.0', memoryUsed: 100 * 1024 * 1024, started: '2023-03-15 08:30:00', state: 'running' },
+      { pid: 1524, name: 'v', user: 'user', cpu: '2.0', memory: '1.1', memoryUsed: 110 * 1024 * 1024, started: '2023-03-15 08:31:20', state: 'running' }
+    ]
+  } else {
+    processes.value = [
+      { pid: 1, name: 'systemd', user: 'root', cpu: '0.5', memory: '0.8', memoryUsed: 80 * 1024 * 1024, started: '2023-03-10 00:00:00', state: 'running' },
+      { pid: 854, name: 'v-core', user: 'root', cpu: '2.1', memory: '1.2', memoryUsed: 120 * 1024 * 1024, started: '2023-03-15 08:30:00', state: 'running' },
+      { pid: 1275, name: 'nginx', user: 'www-data', cpu: '1.5', memory: '0.7', memoryUsed: 70 * 1024 * 1024, started: '2023-03-15 08:31:20', state: 'running' }
+    ]
   }
-  
-  // 进程信息
-  processes.value = Array(20).fill(0).map((_, i) => {
-    const states = ['running', 'sleeping', 'stopped', 'idle']
-    const names = ['nginx', 'python3', 'node', 'v-core', 'mysqld', 'sshd', 'systemd', 'cron']
-    const users = ['root', 'www-data', 'admin', 'system']
-    return {
-      pid: 1000 + i,
-      name: names[Math.floor(Math.random() * names.length)],
-      user: users[Math.floor(Math.random() * users.length)],
-      cpu: (Math.random() * 5).toFixed(1),
-      memory: (Math.random() * 3).toFixed(1),
-      memoryUsed: Math.floor(Math.random() * 500) * 1024 * 1024,
-      started: '2023-03-15 08:' + Math.floor(Math.random() * 60).toString().padStart(2, '0') + ':00',
-      state: states[Math.floor(Math.random() * states.length)]
-    }
-  }).sort((a, b) => parseFloat(b.cpu) - parseFloat(a.cpu))
 }
 
 // 更新图表数据
@@ -381,16 +415,152 @@ const updateCharts = () => {
 // 刷新数据
 const refreshData = async () => {
   loading.value = true
+  apiError.value = false
+  
+  // 添加重试逻辑
+  let retryCount = 0;
+  const maxRetries = 3;
+  const retryDelay = 1000; // 1秒延迟
+  
+  const tryFetchData = async () => {
+    try {
+      // 使用原生fetch直接访问后端API，绕过任何可能的mock机制
+      console.log(`Fetching system status from backend... (attempt ${retryCount + 1}/${maxRetries + 1})`)
+      const response = await window.fetch('/api/system/status')
+      console.log('Raw response status:', response.status, response.statusText)
+      
+      if (response.ok) {
+        const result = await response.json()
+        console.log('API Response from backend (full):', JSON.stringify(result)) // 更详细的调试日志
+        
+        if (result && result.code === 200 && result.data) {
+          const data = result.data
+          
+          // 更新系统信息 - 添加更详细的日志
+          if (data.systemInfo) {
+            console.log('Updating system info with:', data.systemInfo)
+            systemInfo.value = data.systemInfo
+            
+            // 确保load数组正确处理
+            if (!systemInfo.value.load || systemInfo.value.load === null) {
+              console.log('Load array is null or undefined, setting to [0,0,0]')
+              systemInfo.value.load = [0, 0, 0]
+            }
+          } else {
+            console.warn('systemInfo missing in API response')
+          }
+          
+          // 更新CPU信息
+          if (data.cpuInfo) {
+            cpuInfo.value = data.cpuInfo
+            cpuUsage.value = data.cpuUsage || 0
+          }
+          
+          // 更新内存信息
+          if (data.memoryInfo) {
+            memoryInfo.value = data.memoryInfo
+            memoryUsage.value = data.memoryUsage || 0
+          }
+          
+          // 更新磁盘信息
+          if (data.diskInfo) {
+            diskInfo.value = data.diskInfo
+            diskUsage.value = data.diskUsage || 0
+          }
+          
+          // 更新进程列表
+          if (data.processes) {
+            processes.value = data.processes
+          }
+          
+          // 成功获取数据，清除错误状态
+          apiError.value = false;
+          return true;
+        } else {
+          console.error('Invalid API response format:', result)
+          throw new Error('API返回数据格式不正确')
+        }
+      } else {
+        console.error('API request failed with status:', response.status)
+        throw new Error('API请求失败: ' + response.statusText)
+      }
+    } catch (error) {
+      console.error(`获取系统状态失败 (尝试 ${retryCount + 1}/${maxRetries + 1}):`, error)
+      
+      if (retryCount < maxRetries) {
+        retryCount++;
+        console.log(`将在 ${retryDelay}ms 后重试...`)
+        await new Promise(resolve => setTimeout(resolve, retryDelay));
+        return tryFetchData();
+      }
+      
+      // 所有重试都失败，尝试使用axios
+      try {
+        console.log('Trying to fetch data using axios...')
+        const response = await systemApi.getSystemStatus()
+        console.log('Axios API Response:', response) // 添加调试日志
+        
+        if (response && response.code === 200 && response.data) {
+          const data = response.data
+          
+          // 更新系统信息
+          if (data.systemInfo) {
+            console.log('Updating system info from axios with:', data.systemInfo)
+            systemInfo.value = data.systemInfo
+            
+            // 确保load数组正确处理
+            if (!systemInfo.value.load || systemInfo.value.load === null) {
+              systemInfo.value.load = [0, 0, 0]
+            }
+          }
+          
+          // 更新CPU信息
+          if (data.cpuInfo) {
+            cpuInfo.value = data.cpuInfo
+            cpuUsage.value = data.cpuUsage || 0
+          }
+          
+          // 更新内存信息
+          if (data.memoryInfo) {
+            memoryInfo.value = data.memoryInfo
+            memoryUsage.value = data.memoryUsage || 0
+          }
+          
+          // 更新磁盘信息
+          if (data.diskInfo) {
+            diskInfo.value = data.diskInfo
+            diskUsage.value = data.diskUsage || 0
+          }
+          
+          // 更新进程列表
+          if (data.processes) {
+            processes.value = data.processes
+          }
+          
+          // 成功获取数据，清除错误状态
+          apiError.value = false;
+          return true;
+        } else {
+          console.error('Invalid API response format (axios):', response)
+          throw new Error('API返回数据格式不正确(axios)')
+        }
+      } catch (axiosError) {
+        console.error('获取系统状态失败 (axios):', axiosError)
+        ElMessage.error('获取系统状态失败，使用模拟数据')
+        // 设置错误状态
+        apiError.value = true
+        // 如果两种请求都失败，使用模拟数据
+        generateMockData()
+        return false;
+      }
+    }
+  };
+  
   try {
-    // 这里应该是从API获取数据
-    // const { data } = await api.getSystemStatus()
-    // 使用模拟数据
-    generateMockData()
+    await tryFetchData();
     
     // 更新图表
     updateCharts()
-  } catch (error) {
-    console.error('获取系统数据失败:', error)
   } finally {
     loading.value = false
   }
@@ -428,6 +598,7 @@ onMounted(() => {
 <style scoped>
 .system-monitor {
   padding: 20px;
+  z-index: 1;
 }
 
 .card-header {
@@ -482,5 +653,9 @@ onMounted(() => {
 
 .process-table {
   margin-top: 20px;
+}
+
+.el-card {
+  z-index: 1;
 }
 </style> 

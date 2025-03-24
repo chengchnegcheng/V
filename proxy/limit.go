@@ -23,7 +23,7 @@ func NewTrafficLimiter() *TrafficLimiter {
 func (l *TrafficLimiter) CheckTrafficLimit(userID int64) (bool, error) {
 	var trafficLimit, usedTraffic int64
 	err := database.DB.QueryRow(`
-		SELECT traffic_limit, used_traffic 
+		SELECT "traffic_limit", used_traffic 
 		FROM users 
 		WHERE id = ?
 	`, userID).Scan(&trafficLimit, &usedTraffic)
@@ -43,7 +43,7 @@ func (l *TrafficLimiter) CheckTrafficLimit(userID int64) (bool, error) {
 func (l *TrafficLimiter) GetUserTrafficInfo(userID int64) (int64, int64, error) {
 	var trafficLimit, usedTraffic int64
 	err := database.DB.QueryRow(`
-		SELECT traffic_limit, used_traffic 
+		SELECT "traffic_limit", used_traffic 
 		FROM users 
 		WHERE id = ?
 	`, userID).Scan(&trafficLimit, &usedTraffic)
@@ -121,11 +121,11 @@ func (l *TrafficLimiter) ResetTrafficUsage(userID int64) error {
 func (l *TrafficLimiter) SetTrafficLimit(userID int64, limit int64) error {
 	_, err := database.DB.Exec(`
 		UPDATE users 
-		SET traffic_limit = ? 
+		SET "traffic_limit" = ?
 		WHERE id = ?
 	`, limit, userID)
 	if err != nil {
-		return fmt.Errorf("failed to set user traffic limit: %v", err)
+		return fmt.Errorf("failed to set traffic limit: %v", err)
 	}
 
 	l.Lock()
@@ -137,27 +137,27 @@ func (l *TrafficLimiter) SetTrafficLimit(userID int64, limit int64) error {
 
 // GetTrafficLimit returns the traffic limit for a user
 func (l *TrafficLimiter) GetTrafficLimit(userID int64) (int64, error) {
+	var limit int64
+	err := database.DB.QueryRow(`
+		SELECT "traffic_limit"
+		FROM users
+		WHERE id = ?
+	`, userID).Scan(&limit)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get traffic limit: %v", err)
+	}
+
 	l.RLock()
-	limit, ok := l.limits[userID]
+	existingLimit, ok := l.limits[userID]
 	l.RUnlock()
 
 	if ok {
-		return limit, nil
-	}
-
-	var trafficLimit int64
-	err := database.DB.QueryRow(`
-		SELECT traffic_limit 
-		FROM users 
-		WHERE id = ?
-	`, userID).Scan(&trafficLimit)
-	if err != nil {
-		return 0, fmt.Errorf("failed to get user traffic limit: %v", err)
+		return existingLimit, nil
 	}
 
 	l.Lock()
-	l.limits[userID] = trafficLimit
+	l.limits[userID] = limit
 	l.Unlock()
 
-	return trafficLimit, nil
+	return limit, nil
 }

@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"net/http"
+	"strconv"
 	"v/model"
 
 	"github.com/gin-gonic/gin"
@@ -21,7 +22,8 @@ func NewMiddleware(proxyService *Service) *Middleware {
 func (m *Middleware) RequireProxyOwner() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Get proxy ID from URL parameter
-		id, err := c.GetInt64("id")
+		idStr := c.Param("id")
+		id, err := strconv.ParseInt(idStr, 10, 64)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid proxy ID"})
 			c.Abort()
@@ -29,7 +31,7 @@ func (m *Middleware) RequireProxyOwner() gin.HandlerFunc {
 		}
 
 		// Get proxy
-		proxy, err := m.proxyService.GetProxy(id)
+		proxy, err := m.proxyService.GetProxyByID(id)
 		if err != nil {
 			switch err {
 			case ErrProxyNotFound:

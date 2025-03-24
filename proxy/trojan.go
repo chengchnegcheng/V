@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"sync"
+	"time"
 
 	"v/common"
 	"v/logger"
@@ -24,44 +25,83 @@ type TrojanConfig struct {
 
 // TrojanServer Trojan 服务器
 type TrojanServer struct {
-	logger    *logger.Logger
-	proxy     *common.ProxyServer
-	config    *common.TrojanConfig
-	listener  net.Listener
-	tlsConfig *tls.Config
-	mu        sync.Mutex
+	logger       *logger.Logger
+	proxy        *common.ProxyInstance
+	config       *common.TrojanConfig
+	listener     net.Listener
+	tlsConfig    *tls.Config
+	mu           sync.Mutex
+	port         int
+	upload       int64
+	download     int64
+	lastActiveAt time.Time
+	running      bool
 }
 
 // NewTrojanServer 创建 Trojan 服务器
-func NewTrojanServer(logger *logger.Logger, proxy *common.ProxyServer) (*TrojanServer, error) {
+func NewTrojanServer(logger *logger.Logger, proxy *common.ProxyInstance) (*TrojanServer, error) {
 	// 解析配置
 	var config common.TrojanConfig
-	if err := json.Unmarshal([]byte(proxy.Settings["trojan"].(string)), &config); err != nil {
+	settingsStr, ok := proxy.Settings["trojan"]
+	if !ok {
+		return nil, fmt.Errorf("missing trojan settings")
+	}
+
+	// Handle different types of settings
+	var settingsBytes []byte
+	switch v := settingsStr.(type) {
+	case string:
+		settingsBytes = []byte(v)
+	case map[string]interface{}:
+		var err error
+		settingsBytes, err = json.Marshal(v)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal settings: %v", err)
+		}
+	default:
+		return nil, fmt.Errorf("invalid settings type: %T", settingsStr)
+	}
+
+	if err := json.Unmarshal(settingsBytes, &config); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config: %v", err)
 	}
 
 	server := &TrojanServer{
-		logger: logger,
-		proxy:  proxy,
-		config: &config,
+		logger:       logger,
+		proxy:        proxy,
+		config:       &config,
+		port:         proxy.Port,
+		upload:       proxy.Upload,
+		download:     proxy.Download,
+		lastActiveAt: proxy.LastActiveAt,
 	}
 
 	// Setup TLS if enabled
 	if config.Security == "tls" {
-		proxyConfig := proxy.Settings["tls"].(map[string]interface{})
-		if proxyConfig != nil {
-			cert, err := tls.LoadX509KeyPair(
-				proxyConfig["cert_file"].(string),
-				proxyConfig["key_file"].(string),
-			)
-			if err != nil {
-				return nil, fmt.Errorf("failed to load TLS certificate: %v", err)
-			}
+		proxyConfig, ok := proxy.Settings["tls"].(map[string]interface{})
+		if !ok || proxyConfig == nil {
+			return nil, fmt.Errorf("invalid TLS configuration")
+		}
 
-			server.tlsConfig = &tls.Config{
-				Certificates: []tls.Certificate{cert},
-				ServerName:   proxyConfig["server_name"].(string),
-			}
+		certFile, ok1 := proxyConfig["cert_file"].(string)
+		keyFile, ok2 := proxyConfig["key_file"].(string)
+		if !ok1 || !ok2 {
+			return nil, fmt.Errorf("missing certificate files in TLS configuration")
+		}
+
+		cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load TLS certificate: %v", err)
+		}
+
+		serverName, ok := proxyConfig["server_name"].(string)
+		if !ok {
+			serverName = ""
+		}
+
+		server.tlsConfig = &tls.Config{
+			Certificates: []tls.Certificate{cert},
+			ServerName:   serverName,
 		}
 	}
 
@@ -73,8 +113,12 @@ func (s *TrojanServer) Start() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	if s.running {
+		return fmt.Errorf("server is already running")
+	}
+
 	var err error
-	addr := fmt.Sprintf(":%d", s.proxy.Port)
+	addr := fmt.Sprintf(":%d", s.port)
 
 	// Create listener
 	if s.tlsConfig != nil {
@@ -86,7 +130,10 @@ func (s *TrojanServer) Start() error {
 		return fmt.Errorf("failed to create listener: %v", err)
 	}
 
-	s.logger.Info("Trojan server started on port %d", s.proxy.Port)
+	s.running = true
+	s.logger.Info("Trojan server started", logger.Fields{
+		"port": s.port,
+	})
 
 	// Handle connections
 	go s.accept()
@@ -99,23 +146,64 @@ func (s *TrojanServer) Stop() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	if !s.running {
+		return fmt.Errorf("server is not running")
+	}
+
 	if s.listener != nil {
 		if err := s.listener.Close(); err != nil {
-			return fmt.Errorf("failed to close listener: %v", err)
+			s.logger.Error("Failed to close listener", logger.Fields{
+				"error": err.Error(),
+			})
+			return err
 		}
 		s.listener = nil
 	}
 
-	s.logger.Info("Trojan server stopped")
+	s.running = false
+	s.logger.Info("Trojan server stopped", logger.Fields{
+		"port": s.port,
+	})
+
 	return nil
 }
 
-// GetPort 获取服务器端口
+// GetPort returns the server port
 func (s *TrojanServer) GetPort() int {
-	return s.proxy.Port
+	return s.port
 }
 
-// GetProtocol 获取协议类型
+// GetUpload returns the upload traffic
+func (s *TrojanServer) GetUpload() int64 {
+	return s.upload
+}
+
+// GetDownload returns the download traffic
+func (s *TrojanServer) GetDownload() int64 {
+	return s.download
+}
+
+// UpdateTraffic updates traffic statistics
+func (s *TrojanServer) UpdateTraffic(upload, download int64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.upload += upload
+	s.download += download
+}
+
+// UpdateLastActive updates last active time
+func (s *TrojanServer) UpdateLastActive(time time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.lastActiveAt = time
+}
+
+// GetLastActive returns last active time
+func (s *TrojanServer) GetLastActive() time.Time {
+	return s.lastActiveAt
+}
+
+// GetProtocol returns the protocol type
 func (s *TrojanServer) GetProtocol() common.ProtocolType {
 	return common.ProtocolTrojan
 }
@@ -125,8 +213,13 @@ func (s *TrojanServer) accept() {
 	for {
 		conn, err := s.listener.Accept()
 		if err != nil {
-			if netErr, ok := err.(net.Error); ok && netErr.Temporary() {
-				continue
+			if s.running {
+				if netErr, ok := err.(net.Error); ok && netErr.Temporary() {
+					continue
+				}
+				s.logger.Error("Failed to accept connection", logger.Fields{
+					"error": err.Error(),
+				})
 			}
 			return
 		}
@@ -142,27 +235,49 @@ func (s *TrojanServer) handleConnection(conn net.Conn) {
 	// Read Trojan header
 	header, err := s.readHeader(conn)
 	if err != nil {
-		s.logger.Error("Failed to read header: %v", err)
+		s.logger.Error("Failed to read header", logger.Fields{
+			"error": err.Error(),
+		})
 		return
 	}
 
 	// Verify password hash
 	if !s.verifyPassword(header.PasswordHash) {
-		s.logger.Error("Invalid password hash")
+		s.logger.Error("Invalid password hash", nil)
 		return
 	}
 
 	// Connect to target
 	target, err := net.Dial("tcp", header.Address)
 	if err != nil {
-		s.logger.Error("Failed to connect to target: %v", err)
+		s.logger.Error("Failed to connect to target", logger.Fields{
+			"error":   err.Error(),
+			"address": header.Address,
+		})
 		return
 	}
 	defer target.Close()
 
+	// Update last active time
+	s.UpdateLastActive(time.Now())
+
 	// Start proxying
-	go CopyIO(conn, target)
-	CopyIO(target, conn)
+	upload, download := TrojanCopyIO(conn, target)
+
+	// Update traffic stats
+	s.UpdateTraffic(upload, download)
+}
+
+// HandleConnection implements the common.ProxyServerInterface
+func (s *TrojanServer) HandleConnection(conn io.ReadWriteCloser) error {
+	// Convert to net.Conn if possible
+	netConn, ok := conn.(net.Conn)
+	if !ok {
+		return fmt.Errorf("connection is not a net.Conn")
+	}
+
+	go s.handleConnection(netConn)
+	return nil
 }
 
 // TrojanHeader represents a Trojan header
@@ -263,4 +378,33 @@ func (s *TrojanServer) verifyPassword(hash []byte) bool {
 		}
 	}
 	return true
+}
+
+// TrojanCopyIO copies data between two io.ReadWriteCloser and returns traffic stats
+func TrojanCopyIO(dst io.Writer, src io.Reader) (int64, int64) {
+	var upload, download int64
+
+	// Create channels for copy results
+	ch := make(chan int64, 2)
+
+	// Copy from src to dst (upload)
+	go func() {
+		n, err := io.Copy(dst, src)
+		if err != nil {
+			// Just log or ignore the error
+		}
+		ch <- n
+	}()
+
+	// Copy from dst to src (download) - for our case, dst parameter is the client connection
+	n, err := io.Copy(src.(io.Writer), dst.(io.Reader))
+	if err != nil {
+		// Just log or ignore the error
+	}
+	download = n
+
+	// Get upload bytes from goroutine
+	upload = <-ch
+
+	return upload, download
 }

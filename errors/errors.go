@@ -5,92 +5,74 @@ import (
 	"net/http"
 )
 
-// Error represents a custom error type
+// Error represents an API error
 type Error struct {
 	Code    int    `json:"code"`
 	Message string `json:"message"`
-	Err     error  `json:"-"`
 }
 
-// Error implements the error interface
+// Error returns the error message
 func (e *Error) Error() string {
-	if e.Err != nil {
-		return fmt.Sprintf("%s: %v", e.Message, e.Err)
-	}
 	return e.Message
 }
 
-// Unwrap implements the unwrap interface
-func (e *Error) Unwrap() error {
-	return e.Err
-}
-
-// New creates a new Error
-func New(code int, message string, err error) *Error {
+// NewError creates a new error
+func NewError(code int, message string) *Error {
 	return &Error{
 		Code:    code,
 		Message: message,
-		Err:     err,
 	}
 }
 
-// Common error codes
-const (
-	CodeBadRequest         = http.StatusBadRequest
-	CodeUnauthorized       = http.StatusUnauthorized
-	CodeForbidden          = http.StatusForbidden
-	CodeNotFound           = http.StatusNotFound
-	CodeInternalServer     = http.StatusInternalServerError
-	CodeServiceUnavailable = http.StatusServiceUnavailable
-)
-
-// Common error messages
+// 常见错误
 var (
-	ErrInvalidInput       = New(CodeBadRequest, "Invalid input", nil)
-	ErrUnauthorizedAccess = New(CodeUnauthorized, "Unauthorized", nil)
-	ErrForbiddenAccess    = New(CodeForbidden, "Forbidden", nil)
-	ErrResourceNotFound   = New(CodeNotFound, "Not found", nil)
-	ErrInternal           = New(CodeInternalServer, "Internal server error", nil)
-	ErrNotFound           = New(CodeNotFound, "Resource not found", nil)
-	ErrInternalServer     = New(CodeInternalServer, "Internal server error", nil)
+	// 通用错误
+	ErrInternalServerError = NewError(http.StatusInternalServerError, "内部服务器错误")
+	ErrBadRequest          = NewError(http.StatusBadRequest, "无效的请求")
+	ErrUnauthorized        = NewError(http.StatusUnauthorized, "未经授权的访问")
+	ErrForbidden           = NewError(http.StatusForbidden, "禁止访问")
+	ErrNotFound            = NewError(http.StatusNotFound, "资源不存在")
+	ErrMethodNotAllowed    = NewError(http.StatusMethodNotAllowed, "方法不允许")
+	ErrConflict            = NewError(http.StatusConflict, "资源冲突")
+	ErrResourceGone        = NewError(http.StatusGone, "资源不可用")
+	ErrTooManyRequests     = NewError(http.StatusTooManyRequests, "请求过多")
+
+	// 通用API错误
+	ErrInvalidRequestBody  = NewError(http.StatusBadRequest, "无效的请求体")
+	ErrMissingParameter    = NewError(http.StatusBadRequest, "缺少必要参数")
+	ErrInvalidParameter    = NewError(http.StatusBadRequest, "无效的参数")
+	ErrResourceNotFound    = NewError(http.StatusNotFound, "请求的资源不存在")
+	ErrResourceExists      = NewError(http.StatusConflict, "资源已存在")
+	ErrResourceUnavailable = NewError(http.StatusServiceUnavailable, "资源暂时不可用")
+
+	// 认证错误
+	ErrInvalidCredentials = NewError(http.StatusUnauthorized, "无效的凭据")
+	ErrTokenExpired       = NewError(http.StatusUnauthorized, "令牌已过期")
+	ErrInvalidToken       = NewError(http.StatusUnauthorized, "无效的令牌")
+	ErrAccessDenied       = NewError(http.StatusForbidden, "拒绝访问")
+
+	// 数据库错误
+	ErrDatabaseConnection = NewError(http.StatusInternalServerError, "数据库连接错误")
+	ErrDatabaseQuery      = NewError(http.StatusInternalServerError, "数据库查询错误")
+	ErrDatabaseInsert     = NewError(http.StatusInternalServerError, "数据库插入错误")
+	ErrDatabaseUpdate     = NewError(http.StatusInternalServerError, "数据库更新错误")
+	ErrDatabaseDelete     = NewError(http.StatusInternalServerError, "数据库删除错误")
+
+	// Xray错误
+	ErrXrayVersionNotFound = NewError(http.StatusNotFound, "指定的Xray版本不存在")
+	ErrXrayDownloadFailed  = NewError(http.StatusInternalServerError, "下载Xray版本失败")
+	ErrXrayStartFailed     = NewError(http.StatusInternalServerError, "启动Xray失败")
+	ErrXrayStopFailed      = NewError(http.StatusInternalServerError, "停止Xray失败")
+	ErrXrayAlreadyRunning  = NewError(http.StatusConflict, "Xray已经在运行")
+	ErrXrayNotRunning      = NewError(http.StatusConflict, "Xray未在运行")
 )
 
-// IsNotFound checks if the error is a not found error
-func IsNotFound(err error) bool {
-	if e, ok := err.(*Error); ok {
-		return e.Code == CodeNotFound
-	}
-	return false
+// WithMessage returns a new error with the given message
+func WithMessage(err *Error, message string) *Error {
+	return NewError(err.Code, message)
 }
 
-// IsUnauthorized checks if the error is an unauthorized error
-func IsUnauthorized(err error) bool {
-	if e, ok := err.(*Error); ok {
-		return e.Code == CodeUnauthorized
-	}
-	return false
-}
-
-// IsForbidden checks if the error is a forbidden error
-func IsForbidden(err error) bool {
-	if e, ok := err.(*Error); ok {
-		return e.Code == CodeForbidden
-	}
-	return false
-}
-
-// IsBadRequest checks if the error is a bad request error
-func IsBadRequest(err error) bool {
-	if e, ok := err.(*Error); ok {
-		return e.Code == CodeBadRequest
-	}
-	return false
-}
-
-// IsInternal checks if the error is an internal server error
-func IsInternal(err error) bool {
-	if e, ok := err.(*Error); ok {
-		return e.Code == CodeInternalServer
-	}
-	return false
+// WithFormat returns a new error with a formatted message
+func WithFormat(err *Error, format string, args ...interface{}) *Error {
+	return NewError(err.Code, fmt.Sprintf(format, args...))
 }
