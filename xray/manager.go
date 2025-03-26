@@ -1,18 +1,10 @@
 package xray
 
 import (
-	"archive/zip"
-	"context"
-	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	"io"
-	"math"
-	"net"
-	"net/http"
 	"os"
 	"os/exec"
-	"path"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -353,10 +345,22 @@ func (m *Manager) DownloadVersion(version string) error {
 	return nil
 }
 
-// SwitchVersion 切换xray版本
+// SwitchVersion 切换到指定版本的xray
 func (m *Manager) SwitchVersion(version string) error {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
+
+	// 检查版本是否支持
+	supported := false
+	for _, v := range SupportedVersions {
+		if v == version {
+			supported = true
+			break
+		}
+	}
+	if !supported {
+		return fmt.Errorf("unsupported version: %s", version)
+	}
 
 	// 发布切换开始事件
 	m.PublishEvent(XrayEvent{
@@ -367,316 +371,60 @@ func (m *Manager) SwitchVersion(version string) error {
 		Percent: 0,
 	})
 
-	// 检查版本是否支持
-	found := false
-	for _, v := range SupportedVersions {
-		if v == version {
-			found = true
-			break
-		}
-	}
-
-	if !found {
-		// 发布错误事件
-		m.PublishEvent(XrayEvent{
-			Type:    "switch",
-			Version: version,
-			Status:  "error",
-			Message: fmt.Sprintf("不支持的版本: %s", version),
-			Percent: 0,
-		})
-		return fmt.Errorf("unsupported version: %s", version)
-	}
-
-	// 发布进度事件 - 10%
-	m.PublishEvent(XrayEvent{
-		Type:    "switch",
-		Version: version,
-		Status:  "progress",
-		Message: "检查版本文件",
-		Percent: 10,
-	})
-
-	// 检查版本是否已下载，如果没有则下载
+	// 如果版本不存在，先下载
 	if !m.VersionExists(version) {
-		m.log.Info("Version not found, downloading", logger.Fields{
-			"version": version,
-		})
-
-		// 发布进度事件 - 20%
 		m.PublishEvent(XrayEvent{
 			Type:    "switch",
 			Version: version,
 			Status:  "progress",
-			Message: "版本文件不存在，开始下载（这可能需要几分钟，请耐心等待）",
-			Percent: 20,
-			Details: map[string]interface{}{
-				"timeout_info": "下载可能需要5-10分钟，请不要关闭窗口",
-				"download_url": fmt.Sprintf("https://github.com/XTLS/Xray-core/releases/download/%s/", version),
-			},
+			Message: fmt.Sprintf("版本 %s 不存在，开始下载", version),
+			Percent: 10,
 		})
 
-		// 创建一个goroutine定期更新下载进度
-		ticker := time.NewTicker(10 * time.Second)
-		done := make(chan bool)
-
-		go func() {
-			count := 0
-			messages := []string{
-				"正在下载中，请耐心等待...",
-				"下载进行中，这可能需要几分钟时间...",
-				"下载速度可能较慢，请稍候...",
-				"正在尝试多个下载源，请稍后...",
-				"如果下载失败，可以尝试手动下载并放入xray/bin/%s/目录",
-				"国内网络环境下载可能较慢，请继续等待...",
-				"正在连接境外服务器，可能需要较长时间...",
-			}
-
-			percent := 22
-
-			for {
-				select {
-				case <-done:
-					ticker.Stop()
-					return
-				case <-ticker.C:
-					message := messages[count%len(messages)]
-					// 如果是特定消息，替换版本号
-					if strings.Contains(message, "%s") {
-						message = fmt.Sprintf(message, version)
-					}
-
-					// 每次递增一点进度，最高到48%
-					if percent < 48 {
-						percent += 2
-					}
-
-					m.PublishEvent(XrayEvent{
-						Type:    "switch",
-						Version: version,
-						Status:  "progress",
-						Message: message,
-						Percent: percent,
-					})
-
-					count++
-				}
-			}
-		}()
-
-		// 执行下载
-		err := m.DownloadVersion(version)
-		close(done) // 停止进度更新goroutine
-
-		if err != nil {
-			// 添加更多的错误信息和建议
-			errorMsg := fmt.Sprintf("下载失败: %v", err)
-			suggestions := []string{
-				"请检查您的网络连接",
-				"尝试使用VPN或代理",
-				"手动下载Xray到xray/downloads目录",
-				fmt.Sprintf("检查版本 %s 是否存在", version),
-			}
-
-			errorDetails := map[string]interface{}{
-				"error":       err.Error(),
-				"suggestions": suggestions,
-				"manual_url":  fmt.Sprintf("https://github.com/XTLS/Xray-core/releases/tag/%s", version),
-			}
-
-			// 下载失败事件
+		if err := m.DownloadVersion(version); err != nil {
 			m.PublishEvent(XrayEvent{
 				Type:    "switch",
 				Version: version,
 				Status:  "error",
-				Message: errorMsg,
-				Percent: 20,
-				Details: errorDetails,
+				Message: fmt.Sprintf("下载失败: %v", err),
+				Percent: 0,
 			})
 			return fmt.Errorf("failed to download version %s: %v", version, err)
 		}
-
-		// 下载成功，继续切换
-		m.PublishEvent(XrayEvent{
-			Type:    "switch",
-			Version: version,
-			Status:  "progress",
-			Message: "下载完成，准备切换",
-			Percent: 50,
-		})
-	} else {
-		// 版本已存在，跳过下载
-		m.PublishEvent(XrayEvent{
-			Type:    "switch",
-			Version: version,
-			Status:  "progress",
-			Message: "版本文件已存在，准备切换",
-			Percent: 50,
-		})
 	}
 
-	// 保存旧版本状态，用于后续恢复
-	wasRunning := m.running
-	oldVersion := m.currentVersion
-
-	// 停止当前运行的xray
+	// 如果当前有实例在运行，先停止
 	if m.running {
-		m.log.Info("Stopping current Xray version", logger.Fields{
-			"version": m.currentVersion,
-		})
-
-		// 发布进度事件 - 60%
 		m.PublishEvent(XrayEvent{
 			Type:    "switch",
 			Version: version,
 			Status:  "progress",
-			Message: "停止当前运行的版本",
-			Percent: 60,
+			Message: "停止当前运行的实例",
+			Percent: 50,
 		})
 
 		if err := m.Stop(); err != nil {
-			// 发布错误事件
 			m.PublishEvent(XrayEvent{
 				Type:    "switch",
 				Version: version,
 				Status:  "error",
-				Message: fmt.Sprintf("停止当前版本失败: %v", err),
-				Percent: 60,
+				Message: fmt.Sprintf("停止当前实例失败: %v", err),
+				Percent: 50,
 			})
-			return fmt.Errorf("failed to stop current xray: %v", err)
+			return fmt.Errorf("failed to stop current instance: %v", err)
 		}
-
-		// 确保进程完全停止
-		time.Sleep(500 * time.Millisecond)
-	}
-
-	// 发布进度事件 - 70%
-	m.PublishEvent(XrayEvent{
-		Type:    "switch",
-		Version: version,
-		Status:  "progress",
-		Message: "验证新版本文件",
-		Percent: 70,
-	})
-
-	// 先检查新版本的可执行文件是否存在
-	newExecPath := m.GetExecutablePath(version)
-	if _, err := os.Stat(newExecPath); os.IsNotExist(err) {
-		// 如果新版本不存在，尝试回退到之前的版本
-		m.log.Error("New version executable not found, trying to revert", logger.Fields{
-			"version": version,
-			"path":    newExecPath,
-		})
-
-		// 发布错误事件
-		m.PublishEvent(XrayEvent{
-			Type:    "switch",
-			Version: version,
-			Status:  "error",
-			Message: fmt.Sprintf("新版本可执行文件不存在: %s", newExecPath),
-			Percent: 70,
-		})
-
-		if oldVersion != "" && wasRunning {
-			m.currentVersion = oldVersion
-			m.Start()
-
-			// 发布回退事件
-			m.PublishEvent(XrayEvent{
-				Type:    "switch",
-				Version: oldVersion,
-				Status:  "reverted",
-				Message: fmt.Sprintf("回退到版本 %s", oldVersion),
-				Percent: 100,
-			})
-		}
-
-		return fmt.Errorf("xray executable for version %s not found at path: %s", version, newExecPath)
 	}
 
 	// 更新当前版本
 	m.currentVersion = version
 
-	// 发布进度事件 - 80%
-	m.PublishEvent(XrayEvent{
-		Type:    "switch",
-		Version: version,
-		Status:  "progress",
-		Message: "更新设置",
-		Percent: 80,
-	})
-
 	// 更新设置
 	settings := m.settings.Get()
 	settings.Xray.Version = version
 	if err := m.settings.Save(); err != nil {
-		m.log.Error("Failed to save settings, but continuing", logger.Fields{
+		m.log.Error("Failed to save settings", logger.Fields{
 			"error": err,
 		})
-		// 不中断流程，继续执行
-	}
-
-	m.log.Info("Switched xray version", logger.Fields{
-		"version":  version,
-		"execPath": newExecPath,
-	})
-
-	// 发布进度事件 - 90%
-	m.PublishEvent(XrayEvent{
-		Type:    "switch",
-		Version: version,
-		Status:  "progress",
-		Message: "版本切换成功",
-		Percent: 90,
-	})
-
-	// 如果之前在运行，则启动新版本
-	if wasRunning {
-		m.log.Info("Restarting Xray with new version", logger.Fields{
-			"version": version,
-		})
-
-		// 发布重启事件
-		m.PublishEvent(XrayEvent{
-			Type:    "switch",
-			Version: version,
-			Status:  "progress",
-			Message: "重启服务",
-			Percent: 95,
-		})
-
-		if err := m.Start(); err != nil {
-			// 如果新版本启动失败，尝试回退到旧版本
-			m.log.Error("Failed to start new xray version, trying to revert", logger.Fields{
-				"error":   err,
-				"version": version,
-			})
-
-			// 发布错误事件
-			m.PublishEvent(XrayEvent{
-				Type:    "switch",
-				Version: version,
-				Status:  "error",
-				Message: fmt.Sprintf("启动新版本失败: %v", err),
-				Percent: 95,
-			})
-
-			if oldVersion != "" {
-				m.currentVersion = oldVersion
-				m.Start()
-
-				// 发布回退事件
-				m.PublishEvent(XrayEvent{
-					Type:    "switch",
-					Version: oldVersion,
-					Status:  "reverted",
-					Message: fmt.Sprintf("回退到版本 %s", oldVersion),
-					Percent: 100,
-				})
-			}
-
-			return fmt.Errorf("failed to start new xray version: %v", err)
-		}
 	}
 
 	// 发布完成事件
@@ -684,7 +432,7 @@ func (m *Manager) SwitchVersion(version string) error {
 		Type:    "switch",
 		Version: version,
 		Status:  "completed",
-		Message: "版本切换完成",
+		Message: fmt.Sprintf("已切换到版本 %s", version),
 		Percent: 100,
 	})
 
@@ -1055,408 +803,6 @@ func (m *Manager) IsRunning() bool {
 	return m.running
 }
 
-// 辅助函数
-
-// downloadFile 下载文件到指定路径
-func downloadFile(url, filepath string) error {
-	// 根据系统选择下载方法
-	if runtime.GOOS == "windows" {
-		return downloadFileWindows(url, filepath)
-	} else {
-		return downloadFileUnix(url, filepath)
-	}
-}
-
-// downloadFileUnix 在Linux/Unix系统上使用curl命令下载文件
-func downloadFileUnix(url, filepath string) error {
-	// 确保目录存在
-	if err := os.MkdirAll(path.Dir(filepath), 0755); err != nil {
-		return fmt.Errorf("failed to create directory: %v", err)
-	}
-
-	fmt.Printf("使用curl下载: %s\n", url)
-
-	// 创建curl命令，使用-L跟随重定向，-o指定输出文件
-	cmd := exec.Command("curl", "-L", "--connect-timeout", "30",
-		"--retry", "5", "--retry-delay", "2", "--retry-max-time", "120",
-		"-H", "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-		"-o", filepath, url)
-
-	// 获取输出
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("curl download failed: %v, output: %s", err, string(output))
-	}
-
-	// 验证下载文件是否存在
-	if _, err := os.Stat(filepath); os.IsNotExist(err) {
-		return fmt.Errorf("download completed but file not found")
-	}
-
-	// 检查文件是否为空
-	fileInfo, err := os.Stat(filepath)
-	if err != nil {
-		return fmt.Errorf("failed to stat file: %v", err)
-	}
-
-	if fileInfo.Size() == 0 {
-		return fmt.Errorf("downloaded file is empty")
-	}
-
-	return nil
-}
-
-// downloadFileWindows 在Windows系统上使用内置HTTP客户端下载文件
-func downloadFileWindows(url, filepath string) error {
-	// 创建http客户端，设置超时
-	client := &http.Client{
-		Timeout: 300 * time.Second, // 增加到300秒 (5分钟)
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // 忽略SSL证书验证
-			// 增加连接超时
-			DialContext: (&net.Dialer{
-				Timeout:   60 * time.Second, // 增加连接超时
-				KeepAlive: 60 * time.Second,
-			}).DialContext,
-			MaxIdleConns:          100,
-			IdleConnTimeout:       120 * time.Second,
-			TLSHandshakeTimeout:   30 * time.Second,
-			ExpectContinueTimeout: 30 * time.Second,
-			ResponseHeaderTimeout: 60 * time.Second,
-			Proxy:                 http.ProxyFromEnvironment, // 支持系统代理
-			DisableCompression:    false,                     // 允许压缩
-			ForceAttemptHTTP2:     true,                      // 尝试使用HTTP/2
-		},
-	}
-
-	// 最多重试8次
-	maxRetries := 8
-	var err error
-	var resp *http.Response
-
-	for i := 0; i < maxRetries; i++ {
-		ctx, cancel := context.WithTimeout(context.Background(), 300*time.Second)
-		defer cancel()
-
-		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-		if err != nil {
-			return fmt.Errorf("failed to create request: %v", err)
-		}
-
-		// 设置请求头，模拟浏览器行为
-		req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
-		req.Header.Set("Accept", "*/*")
-		req.Header.Set("Accept-Language", "en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7")
-		req.Header.Set("Connection", "keep-alive")
-		req.Header.Set("Cache-Control", "no-cache")
-		req.Header.Set("Pragma", "no-cache")
-
-		// 添加 Range 请求头以支持断点续传
-		if i > 0 {
-			// 检查文件是否已经存在并有内容
-			if fi, err := os.Stat(filepath); err == nil && fi.Size() > 0 {
-				req.Header.Set("Range", fmt.Sprintf("bytes=%d-", fi.Size()))
-				fmt.Printf("断点续传: 从字节 %d 继续下载\n", fi.Size())
-			}
-		}
-
-		// 发送请求
-		resp, err = client.Do(req)
-
-		// 处理超时错误并提供更具体的消息
-		if err != nil {
-			errMsg := err.Error()
-			if os.IsTimeout(err) || strings.Contains(errMsg, "timeout") || strings.Contains(errMsg, "deadline exceeded") {
-				fmt.Printf("第 %d 次下载超时: %v\n", i+1, err)
-			} else {
-				fmt.Printf("第 %d 次下载失败: %v\n", i+1, err)
-			}
-
-			if i < maxRetries-1 {
-				// 指数退避策略，每次重试等待更长时间
-				waitTime := time.Duration(math.Pow(2, float64(i))) * time.Second
-				if waitTime > 30*time.Second {
-					waitTime = 30 * time.Second // 最大等待30秒
-				}
-				fmt.Printf("等待 %v 后重试...\n", waitTime)
-				time.Sleep(waitTime)
-				continue
-			}
-			return fmt.Errorf("download failed after %d retries: %v", maxRetries, err)
-		}
-
-		// 检查是否支持断点续传
-		if resp.StatusCode == http.StatusPartialContent {
-			fmt.Println("服务器支持断点续传，继续下载...")
-		}
-
-		if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusPartialContent {
-			defer resp.Body.Close()
-
-			// 决定是追加还是创建新文件
-			var out *os.File
-			var fileMode int
-			if resp.StatusCode == http.StatusPartialContent && i > 0 {
-				fileMode = os.O_WRONLY | os.O_APPEND
-				fmt.Println("正在追加到现有文件...")
-			} else {
-				fileMode = os.O_WRONLY | os.O_CREATE | os.O_TRUNC
-				fmt.Println("正在创建新文件...")
-			}
-
-			// 创建或打开目标文件
-			out, err = os.OpenFile(filepath, fileMode, 0644)
-			if err != nil {
-				return fmt.Errorf("failed to create file: %v", err)
-			}
-
-			// 使用更大的缓冲区提高复制速度
-			buf := make([]byte, 64*1024) // 64KB的缓冲区
-
-			// 设置进度报告
-			total := resp.ContentLength
-			var downloaded int64 = 0
-			lastReportTime := time.Now()
-
-			// 创建读取器以计算进度
-			reader := &progressReader{
-				Reader: resp.Body,
-				Total:  total,
-				OnProgress: func(n int64) {
-					downloaded += int64(n)
-					// 每秒最多报告一次进度
-					if time.Since(lastReportTime) > time.Second {
-						percent := float64(0)
-						if total > 0 {
-							percent = float64(downloaded) / float64(total) * 100
-						}
-						fmt.Printf("下载进度: %.2f%% (%d/%d 字节)\n", percent, downloaded, total)
-						lastReportTime = time.Now()
-					}
-				},
-			}
-
-			_, err = io.CopyBuffer(out, reader, buf)
-			out.Close()
-
-			if err != nil {
-				fmt.Printf("复制文件内容失败: %v，将重试...\n", err)
-				if i < maxRetries-1 {
-					time.Sleep(time.Duration(math.Pow(2, float64(i))) * time.Second)
-					continue
-				}
-				return fmt.Errorf("failed to write file after %d retries: %v", maxRetries, err)
-			}
-
-			fmt.Println("下载完成!")
-			return nil
-		}
-
-		// 处理不成功的响应状态
-		if resp != nil {
-			errBody, _ := io.ReadAll(resp.Body)
-			resp.Body.Close()
-
-			err = fmt.Errorf("HTTP %s: %s", resp.Status, string(errBody))
-
-			// 特定状态码的处理，例如重定向
-			if resp.StatusCode == http.StatusFound || resp.StatusCode == http.StatusMovedPermanently {
-				if location, err := resp.Location(); err == nil && location != nil {
-					// 处理重定向
-					redirectURL := location.String()
-					fmt.Printf("重定向到: %s\n", redirectURL)
-					url = redirectURL // 更新URL以便下次重试
-				}
-			}
-		}
-
-		if i < maxRetries-1 {
-			// 指数退避策略，每次重试等待更长时间
-			waitTime := time.Duration(math.Pow(2, float64(i))) * time.Second
-			if waitTime > 30*time.Second {
-				waitTime = 30 * time.Second // 最大等待30秒
-			}
-			fmt.Printf("第 %d 次下载失败, 状态码: %d, 等待 %v 后重试: %v\n",
-				i+1, resp.StatusCode, waitTime, err)
-			time.Sleep(waitTime)
-		}
-	}
-
-	return fmt.Errorf("download failed after %d retries, last error: %v", maxRetries, err)
-}
-
-// 进度读取器，用于报告下载进度
-type progressReader struct {
-	io.Reader
-	Total      int64
-	OnProgress func(n int64)
-}
-
-func (r *progressReader) Read(p []byte) (n int, err error) {
-	n, err = r.Reader.Read(p)
-	if n > 0 && r.OnProgress != nil {
-		r.OnProgress(int64(n))
-	}
-	return
-}
-
-// unzip 解压zip文件到指定目录
-func unzip(src, dest string) error {
-	// 先检查源文件是否存在和是否有效
-	fileInfo, err := os.Stat(src)
-	if err != nil {
-		return fmt.Errorf("failed to stat zip file: %v", err)
-	}
-
-	if fileInfo.Size() == 0 {
-		return fmt.Errorf("zip file is empty")
-	}
-
-	fmt.Printf("解压文件: %s (大小: %d 字节)\n", src, fileInfo.Size())
-
-	// 尝试使用系统命令解压(Linux/Unix)
-	if runtime.GOOS != "windows" {
-		// 确保目标目录存在
-		if err := os.MkdirAll(dest, 0755); err != nil {
-			return fmt.Errorf("failed to create destination directory: %v", err)
-		}
-
-		// 在Linux上使用unzip命令
-		cmd := exec.Command("unzip", "-o", src, "-d", dest)
-		output, err := cmd.CombinedOutput()
-		if err == nil {
-			fmt.Printf("使用系统unzip命令解压成功\n")
-			return nil
-		}
-
-		fmt.Printf("系统unzip命令失败: %v, 输出: %s\n尝试使用Go内置解压方法...\n", err, string(output))
-	}
-
-	// 尝试修复临时目录问题：使用应用程序目录下的临时目录，而不是系统临时目录
-	// 创建应用程序内的临时目录
-	tempDir := filepath.Join("xray", "temp_extract")
-	// 先确保临时目录不存在（可能是上次解压失败残留）
-	os.RemoveAll(tempDir)
-	// 创建新的临时目录，确保目录权限设置为0755
-	if err := os.MkdirAll(tempDir, 0755); err != nil {
-		return fmt.Errorf("failed to create temp directory: %v", err)
-	}
-
-	// 使用应用内临时文件
-	tempZip := filepath.Join(tempDir, "temp.zip")
-
-	fmt.Printf("创建临时文件: %s\n", tempZip)
-
-	// 复制zip文件到临时位置
-	srcFile, err := os.Open(src)
-	if err != nil {
-		return fmt.Errorf("failed to open source zip file: %v", err)
-	}
-	defer srcFile.Close()
-
-	dstFile, err := os.OpenFile(tempZip, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
-	if err != nil {
-		return fmt.Errorf("failed to create temp zip file: %v", err)
-	}
-	defer dstFile.Close()
-
-	_, err = io.Copy(dstFile, srcFile)
-	if err != nil {
-		return fmt.Errorf("failed to copy zip file: %v", err)
-	}
-
-	// 确保文件写入完成
-	dstFile.Sync()
-	dstFile.Close()
-
-	// 使用原生 Go 实现，避免在 Windows 上使用 PowerShell 命令行
-	r, err := zip.OpenReader(tempZip)
-	if err != nil {
-		// 尝试直接使用备用工具解压
-		if runtime.GOOS == "windows" {
-			fmt.Printf("尝试使用内置extract-zip工具解压...\n")
-			// 检查是否有tools目录下的node工具
-			nodeExe := filepath.Join("tools", "node_modules", ".bin", "extract-zip")
-			if _, err := os.Stat(nodeExe); err == nil {
-				cmd := exec.Command("node", filepath.Join("tools", "download_xray.js"), filepath.Base(filepath.Dir(dest)))
-				output, err := cmd.CombinedOutput()
-				if err == nil {
-					fmt.Printf("使用Node工具解压成功\n")
-					// 清理临时目录
-					os.RemoveAll(tempDir)
-					return nil
-				}
-				fmt.Printf("Node工具解压失败: %v, 输出: %s\n", err, string(output))
-			}
-		}
-		// 清理临时目录
-		os.RemoveAll(tempDir)
-		return fmt.Errorf("failed to open zip file: %v", err)
-	}
-	defer r.Close()
-
-	// 创建目标目录（如果不存在）
-	if err := os.MkdirAll(dest, 0755); err != nil {
-		return fmt.Errorf("failed to create destination directory: %v", err)
-	}
-
-	fmt.Printf("ZIP文件信息: 共包含 %d 个文件\n", len(r.File))
-
-	// 遍历 zip 文件中的所有文件/目录
-	for _, f := range r.File {
-		// 构建解压后的路径
-		fpath := filepath.Join(dest, f.Name)
-
-		// 检查文件路径是否在目标目录内（安全检查）
-		if !strings.HasPrefix(fpath, filepath.Clean(dest)+string(os.PathSeparator)) {
-			return fmt.Errorf("illegal file path: %s", fpath)
-		}
-
-		// 打印出处理的文件名，便于调试
-		fmt.Printf("解压文件: %s\n", f.Name)
-
-		// 如果是目录，则创建
-		if f.FileInfo().IsDir() {
-			if err := os.MkdirAll(fpath, os.ModePerm); err != nil {
-				return fmt.Errorf("failed to create directory: %v", err)
-			}
-			continue
-		}
-
-		// 确保目录存在
-		if err := os.MkdirAll(filepath.Dir(fpath), os.ModePerm); err != nil {
-			return fmt.Errorf("failed to create parent directory: %v", err)
-		}
-
-		// 打开 zip 中的文件
-		rc, err := f.Open()
-		if err != nil {
-			return fmt.Errorf("failed to open file in zip: %v", err)
-		}
-
-		// 创建目标文件
-		outFile, err := os.OpenFile(fpath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, f.Mode())
-		if err != nil {
-			rc.Close()
-			return fmt.Errorf("failed to create output file: %v", err)
-		}
-
-		// 复制内容
-		_, err = io.Copy(outFile, rc)
-		outFile.Close()
-		rc.Close()
-		if err != nil {
-			return fmt.Errorf("failed to copy file content: %v", err)
-		}
-	}
-
-	// 清理临时文件和目录
-	os.RemoveAll(tempDir)
-
-	fmt.Printf("ZIP文件成功解压到: %s\n", dest)
-	return nil
-}
-
 // UpdateConfig 更新xray配置文件
 func (m *Manager) UpdateConfig(config map[string]interface{}) error {
 	// 获取当前设置
@@ -1656,27 +1002,5 @@ func (m *Manager) PublishEvent(event XrayEvent) {
 				"event": event,
 			})
 		}
-	}
-}
-
-// getFileSize 返回文件大小的字符串表示
-func getFileSize(filePath string) string {
-	// 获取文件大小
-	fileInfo, err := os.Stat(filePath)
-	if err != nil {
-		return "Unknown"
-	}
-
-	sizeInBytes := fileInfo.Size()
-
-	// 转换为友好格式
-	if sizeInBytes < 1024 {
-		return fmt.Sprintf("%d B", sizeInBytes)
-	} else if sizeInBytes < 1024*1024 {
-		return fmt.Sprintf("%.2f KB", float64(sizeInBytes)/1024)
-	} else if sizeInBytes < 1024*1024*1024 {
-		return fmt.Sprintf("%.2f MB", float64(sizeInBytes)/(1024*1024))
-	} else {
-		return fmt.Sprintf("%.2f GB", float64(sizeInBytes)/(1024*1024*1024))
 	}
 }
