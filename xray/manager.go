@@ -1153,13 +1153,8 @@ func (m *Manager) Start() error {
 	// 启动xray进程
 	cmd := exec.Command(execPath, "-config", configPath)
 
-	// 在 Windows 上设置特定的进程属性
-	if runtime.GOOS == "windows" {
-		// 避免显示命令行窗口
-		cmd.SysProcAttr = &syscall.SysProcAttr{
-			HideWindow: true,
-		}
-	}
+	// 配置平台特定的进程属性
+	configureProcessAttributes(cmd)
 
 	// 设置输出
 	stdout, err := os.Create(filepath.Join(logDir, "xray_stdout.log"))
@@ -1819,30 +1814,36 @@ func (m *Manager) PublishEvent(event XrayEvent) {
 
 // getFileSize 返回文件大小的字符串表示
 func getFileSize(filePath string) string {
-	info, err := os.Stat(filePath)
+	// 获取文件大小
+	fileInfo, err := os.Stat(filePath)
 	if err != nil {
-		return "unknown"
+		return "Unknown"
 	}
 
-	size := info.Size()
-	const (
-		B  = 1
-		KB = 1024 * B
-		MB = 1024 * KB
-		GB = 1024 * MB
-	)
+	sizeInBytes := fileInfo.Size()
 
-	var sizeStr string
-	switch {
-	case size >= GB:
-		sizeStr = fmt.Sprintf("%.2f GB", float64(size)/float64(GB))
-	case size >= MB:
-		sizeStr = fmt.Sprintf("%.2f MB", float64(size)/float64(MB))
-	case size >= KB:
-		sizeStr = fmt.Sprintf("%.2f KB", float64(size)/float64(KB))
-	default:
-		sizeStr = fmt.Sprintf("%d B", size)
+	// 转换为友好格式
+	if sizeInBytes < 1024 {
+		return fmt.Sprintf("%d B", sizeInBytes)
+	} else if sizeInBytes < 1024*1024 {
+		return fmt.Sprintf("%.2f KB", float64(sizeInBytes)/1024)
+	} else if sizeInBytes < 1024*1024*1024 {
+		return fmt.Sprintf("%.2f MB", float64(sizeInBytes)/(1024*1024))
+	} else {
+		return fmt.Sprintf("%.2f GB", float64(sizeInBytes)/(1024*1024*1024))
 	}
+}
 
-	return sizeStr
+// configureProcessAttributes 配置平台特定的进程属性
+func configureProcessAttributes(cmd *exec.Cmd) {
+	// 配置平台特定的进程属性
+	if runtime.GOOS == "windows" {
+		// 避免显示命令行窗口
+		cmd.SysProcAttr = &syscall.SysProcAttr{
+			HideWindow: true,
+		}
+	} else {
+		// 在Linux/Unix系统上使用默认的SysProcAttr
+		cmd.SysProcAttr = &syscall.SysProcAttr{}
+	}
 }
