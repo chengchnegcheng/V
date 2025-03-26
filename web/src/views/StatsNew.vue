@@ -77,9 +77,9 @@
         <div class="card-header">
           <span>流量统计</span>
           <el-radio-group v-model="trafficChartType" size="small" @change="updateTrafficChart">
-            <el-radio-button label="hour">小时</el-radio-button>
-            <el-radio-button label="day">天</el-radio-button>
-            <el-radio-button label="month">月</el-radio-button>
+            <el-radio-button value="hour">小时</el-radio-button>
+            <el-radio-button value="day">天</el-radio-button>
+            <el-radio-button value="month">月</el-radio-button>
           </el-radio-group>
         </div>
       </template>

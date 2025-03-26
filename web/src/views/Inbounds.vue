@@ -400,8 +400,8 @@
           
           <el-form-item label="证书配置">
             <el-radio-group v-model="inboundForm.stream_settings.tls_settings.cert_mode">
-              <el-radio label="certificate file path">证书文件路径</el-radio>
-              <el-radio label="certificate file content">证书文件内容</el-radio>
+              <el-radio value="certificate file path">证书文件路径</el-radio>
+              <el-radio value="certificate file content">证书文件内容</el-radio>
             </el-radio-group>
           </el-form-item>
           

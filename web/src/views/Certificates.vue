@@ -102,8 +102,8 @@
         </el-form-item>
         <el-form-item label="验证方式" prop="validationMethod">
           <el-radio-group v-model="applyForm.validationMethod">
-            <el-radio label="dns">DNS 验证</el-radio>
-            <el-radio label="http">HTTP 验证</el-radio>
+            <el-radio value="dns">DNS 验证</el-radio>
+            <el-radio value="http">HTTP 验证</el-radio>
           </el-radio-group>
         </el-form-item>
         <el-form-item

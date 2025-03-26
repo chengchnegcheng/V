@@ -87,9 +87,9 @@
     "config_path": ""
   },
   "protocols": {
-    "http": false,
+    "http": true,
     "shadowsocks": true,
-    "socks": false,
+    "socks": true,
     "trojan": true,
     "vless": true,
     "vmess": true
@@ -97,7 +97,7 @@
   "transports": {
     "grpc": true,
     "http2": true,
-    "quic": true,
+    "quic": false,
     "tcp": true,
     "ws": true
   }

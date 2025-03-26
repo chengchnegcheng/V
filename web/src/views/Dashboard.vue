@@ -56,9 +56,9 @@
       <div class="panel-header">
         <span class="panel-title">流量统计</span>
         <el-radio-group v-model="trafficPeriod" size="small" @change="changeTrafficPeriod">
-          <el-radio-button label="today">今日</el-radio-button>
-          <el-radio-button label="week">本周</el-radio-button>
-          <el-radio-button label="month">本月</el-radio-button>
+          <el-radio-button value="today">今日</el-radio-button>
+          <el-radio-button value="week">本周</el-radio-button>
+          <el-radio-button value="month">本月</el-radio-button>
         </el-radio-group>
       </div>
       <div class="traffic-stats">

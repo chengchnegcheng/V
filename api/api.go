@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -17,6 +18,7 @@ import (
 	"v/errors"
 	"v/logger"
 	"v/middleware"
+	"v/model"
 	"v/settings"
 	"v/xray"
 )
@@ -61,9 +63,12 @@ func (h *Handler) Start() error {
 	// Setup inbound management endpoints
 	h.setupInboundEndpoints()
 
+	// Setup system endpoints
+	h.setupSystemEndpoints()
+
 	// Start HTTP server
 	h.httpServer = &http.Server{
-		Addr:    ":9000",
+		Addr:    "0.0.0.0:9000",
 		Handler: h.router,
 	}
 
@@ -76,7 +81,7 @@ func (h *Handler) Start() error {
 	}()
 
 	h.log.Info("API server started", logger.Fields{
-		"address": ":9000",
+		"address": "0.0.0.0:9000",
 	})
 
 	return nil
@@ -102,6 +107,9 @@ func (h *Handler) Setup() {
 	h.router.Use(middleware.ToMuxMiddleware(middleware.Recovery(h.log)))
 	h.router.Use(middleware.ToMuxMiddleware(middleware.CORS()))
 	h.router.Use(middleware.ToMuxMiddleware(middleware.RateLimit()))
+
+	// 设置SSE端点
+	h.setupSSEEndpoints()
 
 	// Register handlers
 	for path, handler := range h.handlers {
@@ -147,8 +155,86 @@ func (h *Handler) setupXrayEndpoints() {
 			return
 		}
 
+		// 记录当前运行状态
+		wasRunning := h.xrayMgr.IsRunning()
+		currentVersion := h.xrayMgr.GetCurrentVersion()
+
+		// 如果请求的版本与当前版本相同，直接返回成功
+		if req.Version == currentVersion {
+			h.handleResponse(w, map[string]interface{}{
+				"success":         true,
+				"current_version": currentVersion,
+				"message":         "Already using this version",
+				"status":          "unchanged",
+			})
+			return
+		}
+
+		h.log.Info("Switching Xray version", logger.Fields{
+			"from":    currentVersion,
+			"to":      req.Version,
+			"running": wasRunning,
+		})
+
 		if err := h.xrayMgr.SwitchVersion(req.Version); err != nil {
-			h.handleError(w, err)
+			h.log.Error("Failed to switch version", logger.Fields{
+				"error":   err,
+				"version": req.Version,
+			})
+
+			// 返回更详细的错误信息
+			h.handleResponse(w, map[string]interface{}{
+				"success":         false,
+				"current_version": h.xrayMgr.GetCurrentVersion(), // 可能已经更改或回退
+				"error":           err.Error(),
+				"status":          "error",
+			})
+			return
+		}
+
+		// 检查新状态
+		newStatus := "switched"
+		if wasRunning && !h.xrayMgr.IsRunning() {
+			newStatus = "switched_but_stopped" // 版本切换了，但进程未启动
+		}
+
+		h.handleResponse(w, map[string]interface{}{
+			"success":          true,
+			"previous_version": currentVersion,
+			"current_version":  req.Version,
+			"was_running":      wasRunning,
+			"is_running":       h.xrayMgr.IsRunning(),
+			"status":           newStatus,
+		})
+	}).Methods("POST")
+
+	// 添加兼容旧版URL格式的端点
+	h.router.HandleFunc("/api/xray/switch-version", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Version string `json:"version"`
+		}
+
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			h.handleError(w, errors.ErrInvalidRequestBody)
+			return
+		}
+
+		if req.Version == "" {
+			h.handleError(w, errors.ErrInvalidRequestBody)
+			return
+		}
+
+		// 重定向到新API
+		h.log.Info("Redirecting from /api/xray/switch-version to /api/xray/version", logger.Fields{
+			"version": req.Version,
+		})
+
+		// 调用SwitchVersion并返回结果
+		if err := h.xrayMgr.SwitchVersion(req.Version); err != nil {
+			h.handleResponse(w, map[string]interface{}{
+				"success": false,
+				"error":   err.Error(),
+			})
 			return
 		}
 
@@ -706,6 +792,102 @@ func (h *Handler) setupInboundEndpoints() {
 		h.handleResponse(w, map[string]interface{}{
 			"link": link,
 		})
+	}).Methods("GET")
+}
+
+// setupSSEEndpoints 设置SSE（Server-Sent Events）端点
+func (h *Handler) setupSSEEndpoints() {
+	// 监听Xray下载和版本切换进度
+	h.router.HandleFunc("/api/sse/xray-events", func(w http.ResponseWriter, r *http.Request) {
+		// 设置SSE相关的HTTP头
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+
+		// 让客户端知道连接已经建立
+		fmt.Fprintf(w, "event: connected\ndata: {\"status\":\"connected\"}\n\n")
+
+		// 创建事件通道
+		events := h.xrayMgr.SubscribeEvents()
+
+		// 设置上下文以便在客户端断开连接时取消
+		ctx := r.Context()
+
+		// 保持连接并发送事件
+		for {
+			select {
+			case <-ctx.Done():
+				// 客户端断开连接
+				h.xrayMgr.UnsubscribeEvents(events)
+				return
+			case event := <-events:
+				// 将事件格式化为SSE格式并发送
+				eventData, err := json.Marshal(event)
+				if err != nil {
+					h.log.Error("Failed to marshal SSE event", logger.Fields{
+						"error": err,
+					})
+					continue
+				}
+
+				fmt.Fprintf(w, "event: xray-progress\ndata: %s\n\n", string(eventData))
+				// 刷新缓冲区，确保数据立即发送
+				if f, ok := w.(http.Flusher); ok {
+					f.Flush()
+				}
+			}
+		}
+	}).Methods("GET")
+}
+
+// setupSystemEndpoints sets up the system-related API endpoints
+func (h *Handler) setupSystemEndpoints() {
+	// Get system information
+	h.router.HandleFunc("/api/system/info", func(w http.ResponseWriter, r *http.Request) {
+		// Get system information
+		// ...existing code...
+	}).Methods("GET")
+
+	// Add system status endpoint
+	h.router.HandleFunc("/api/system/status", func(w http.ResponseWriter, r *http.Request) {
+		// Get more detailed system status including CPU, memory, disk, etc.
+		sysInfo := model.GetSystemInfo()
+
+		// Get CPU cores
+		cpuCores := runtime.NumCPU()
+
+		// Create response with system statistics
+		response := map[string]interface{}{
+			"code":    200,
+			"message": "success",
+			"data": map[string]interface{}{
+				"systemInfo": sysInfo,
+				"cpuInfo": map[string]interface{}{
+					"cores":     cpuCores,
+					"model":     "CPU Model",
+					"usage":     45.0, // Mock value
+					"frequency": "3.5 GHz",
+					"processes": runtime.NumGoroutine(),
+					"threads":   cpuCores * 2,
+				},
+				"cpuUsage": 45.0, // Mock value
+				"memoryInfo": map[string]interface{}{
+					"total": 16 * 1024 * 1024 * 1024, // 16GB
+					"used":  6 * 1024 * 1024 * 1024,  // 6GB
+					"free":  10 * 1024 * 1024 * 1024, // 10GB
+				},
+				"memoryUsage": 40.0, // Mock percentage
+				"diskInfo": map[string]interface{}{
+					"total": 500 * 1024 * 1024 * 1024, // 500GB
+					"used":  175 * 1024 * 1024 * 1024, // 175GB
+					"free":  325 * 1024 * 1024 * 1024, // 325GB
+				},
+				"diskUsage": 35.0, // Mock percentage
+			},
+		}
+
+		h.handleResponse(w, response)
 	}).Methods("GET")
 }
 

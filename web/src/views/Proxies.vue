@@ -189,8 +189,8 @@
               </el-form-item>
               <el-form-item label="证书" prop="streamSettings.tlsSettings.certificates">
                 <el-radio-group v-model="certType">
-                  <el-radio label="file">证书文件路径</el-radio>
-                  <el-radio label="content">证书文件内容</el-radio>
+                  <el-radio value="file">证书文件路径</el-radio>
+                  <el-radio value="content">证书文件内容</el-radio>
                 </el-radio-group>
                 
                 <div v-if="certType === 'file'" class="cert-input">

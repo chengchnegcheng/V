@@ -3,6 +3,8 @@ package api
 import (
 	"log/slog"
 	"net/http"
+	"os"
+	"runtime"
 
 	"v/cert"
 	"v/monitor"
@@ -60,7 +62,29 @@ func (h *APIHandler) handleHealth(c *router.Context) {
 
 // handleSystemInfo 处理系统信息
 func (h *APIHandler) handleSystemInfo(c *router.Context) {
-	c.JSON(http.StatusOK, map[string]string{
+	// 获取系统信息
+	info := map[string]interface{}{
 		"status": "running",
-	})
+		"os":     runtime.GOOS,
+		"arch":   runtime.GOARCH,
+	}
+
+	// 添加更多详细信息
+	hostname, err := os.Hostname()
+	if err == nil {
+		info["hostname"] = hostname
+	}
+
+	info["go_version"] = runtime.Version()
+	info["num_cpu"] = runtime.NumCPU()
+	info["num_goroutine"] = runtime.NumGoroutine()
+
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+	info["memory_alloc"] = m.Alloc / 1024 / 1024            // MB
+	info["memory_total_alloc"] = m.TotalAlloc / 1024 / 1024 // MB
+	info["memory_sys"] = m.Sys / 1024 / 1024                // MB
+
+	// 返回信息
+	c.JSON(http.StatusOK, info)
 }

@@ -51,9 +51,9 @@
         <div class="card-header">
           <span>流量趋势</span>
           <el-radio-group v-model="trafficChartType" size="small">
-            <el-radio-button label="day">日</el-radio-button>
-            <el-radio-button label="week">周</el-radio-button>
-            <el-radio-button label="month">月</el-radio-button>
+            <el-radio-button value="day">日</el-radio-button>
+            <el-radio-button value="week">周</el-radio-button>
+            <el-radio-button value="month">月</el-radio-button>
           </el-radio-group>
         </div>
       </template>

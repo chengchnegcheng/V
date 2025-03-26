@@ -109,13 +109,31 @@ func (m *ProtocolManager) GenerateVLESSLink(protocol *model.Protocol) (string, e
 		link.Type = "tls"
 	}
 
-	return fmt.Sprintf("vless://%s@%s:%s?type=%s&host=%s&path=%s#%s",
+	// 构建参数列表
+	params := []string{
+		fmt.Sprintf("encryption=%s", link.Encryption),
+		fmt.Sprintf("type=%s", link.Type),
+		fmt.Sprintf("host=%s", url.QueryEscape(link.Host)),
+	}
+
+	// 添加Flow参数，如果存在
+	if link.Flow != "" {
+		params = append(params, fmt.Sprintf("flow=%s", link.Flow))
+	}
+
+	// 添加Path参数，如果存在
+	if link.Path != "" {
+		params = append(params, fmt.Sprintf("path=%s", url.QueryEscape(link.Path)))
+	}
+
+	// 添加指纹参数
+	params = append(params, fmt.Sprintf("fp=%s", link.FP))
+
+	return fmt.Sprintf("vless://%s@%s:%s?%s#%s",
 		link.ID,
 		link.Host,
 		link.Port,
-		link.Type,
-		url.QueryEscape(link.Host),
-		url.QueryEscape(link.Path),
+		strings.Join(params, "&"),
 		url.QueryEscape(protocol.Name),
 	), nil
 }
@@ -145,9 +163,9 @@ func (m *ProtocolManager) GenerateTrojanLink(protocol *model.Protocol) (string, 
 
 	params = append(params, fmt.Sprintf("sni=%s", sni))
 
-	// 添加 Path 参数，如果存在
-	if settings.Path != "" {
-		params = append(params, fmt.Sprintf("path=%s", url.QueryEscape(settings.Path)))
+	// 添加 Path 参数，如果存在且不为空
+	if link.Path != "" {
+		params = append(params, fmt.Sprintf("path=%s", url.QueryEscape(link.Path)))
 	}
 
 	// 构建完整链接

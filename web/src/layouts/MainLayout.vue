@@ -80,9 +80,9 @@
           <div class="user-info">
             <el-avatar size="small" class="user-avatar">{{ username.charAt(0).toUpperCase() }}</el-avatar>
             <span class="username">{{ username }}</span>
-            <el-button type="text" size="small" @click="goToProfile" class="user-action-btn">个人资料</el-button>
-            <el-button type="text" size="small" @click="goToChangePassword" class="user-action-btn">修改密码</el-button>
-            <el-button type="text" size="small" @click="confirmLogout" class="user-action-btn logout-btn">退出登录</el-button>
+            <el-button link size="small" @click="goToProfile" class="user-action-btn">个人资料</el-button>
+            <el-button link size="small" @click="goToChangePassword" class="user-action-btn">修改密码</el-button>
+            <el-button link size="small" @click="confirmLogout" class="user-action-btn logout-btn">退出登录</el-button>
           </div>
         </div>
       </header>
