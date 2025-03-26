@@ -1630,9 +1630,54 @@ func unzip(src, dest string) error {
 		fmt.Printf("系统unzip命令失败: %v, 输出: %s\n尝试使用Go内置解压方法...\n", err, string(output))
 	}
 
-	// 使用原生 Go 实现，避免在 Windows 上使用 PowerShell 命令行
-	r, err := zip.OpenReader(src)
+	// 尝试修复Windows下对Linux zip文件的处理
+	// 1. 先将zip文件复制到临时目录
+	tempDir := filepath.Join(os.TempDir(), "xray_temp_extract")
+	os.MkdirAll(tempDir, 0755)
+	tempZip := filepath.Join(tempDir, "temp.zip")
+
+	fmt.Printf("创建临时文件: %s\n", tempZip)
+
+	// 复制zip文件到临时位置
+	srcFile, err := os.Open(src)
 	if err != nil {
+		return fmt.Errorf("failed to open source zip file: %v", err)
+	}
+	defer srcFile.Close()
+
+	dstFile, err := os.Create(tempZip)
+	if err != nil {
+		return fmt.Errorf("failed to create temp zip file: %v", err)
+	}
+	defer dstFile.Close()
+
+	_, err = io.Copy(dstFile, srcFile)
+	if err != nil {
+		return fmt.Errorf("failed to copy zip file: %v", err)
+	}
+
+	// 确保文件写入完成
+	dstFile.Sync()
+	dstFile.Close()
+
+	// 使用原生 Go 实现，避免在 Windows 上使用 PowerShell 命令行
+	r, err := zip.OpenReader(tempZip)
+	if err != nil {
+		// 尝试直接使用备用工具解压
+		if runtime.GOOS == "windows" {
+			fmt.Printf("尝试使用内置extract-zip工具解压...\n")
+			// 检查是否有tools目录下的node工具
+			nodeExe := filepath.Join("tools", "node_modules", ".bin", "extract-zip")
+			if _, err := os.Stat(nodeExe); err == nil {
+				cmd := exec.Command("node", filepath.Join("tools", "download_xray.js"), filepath.Base(filepath.Dir(dest)))
+				output, err := cmd.CombinedOutput()
+				if err == nil {
+					fmt.Printf("使用Node工具解压成功\n")
+					return nil
+				}
+				fmt.Printf("Node工具解压失败: %v, 输出: %s\n", err, string(output))
+			}
+		}
 		return fmt.Errorf("failed to open zip file: %v", err)
 	}
 	defer r.Close()
@@ -1691,6 +1736,9 @@ func unzip(src, dest string) error {
 			return fmt.Errorf("failed to copy file content: %v", err)
 		}
 	}
+
+	// 清理临时文件
+	os.Remove(tempZip)
 
 	fmt.Printf("ZIP文件成功解压到: %s\n", dest)
 	return nil
