@@ -1332,10 +1332,17 @@ func unzip(src, dest string) error {
 		fmt.Printf("系统unzip命令失败: %v, 输出: %s\n尝试使用Go内置解压方法...\n", err, string(output))
 	}
 
-	// 尝试修复Windows下对Linux zip文件的处理
-	// 1. 先将zip文件复制到临时目录
-	tempDir := filepath.Join(os.TempDir(), "xray_temp_extract")
-	os.MkdirAll(tempDir, 0755)
+	// 尝试修复临时目录问题：使用应用程序目录下的临时目录，而不是系统临时目录
+	// 创建应用程序内的临时目录
+	tempDir := filepath.Join("xray", "temp_extract")
+	// 先确保临时目录不存在（可能是上次解压失败残留）
+	os.RemoveAll(tempDir)
+	// 创建新的临时目录，确保目录权限设置为0755
+	if err := os.MkdirAll(tempDir, 0755); err != nil {
+		return fmt.Errorf("failed to create temp directory: %v", err)
+	}
+
+	// 使用应用内临时文件
 	tempZip := filepath.Join(tempDir, "temp.zip")
 
 	fmt.Printf("创建临时文件: %s\n", tempZip)
@@ -1347,7 +1354,7 @@ func unzip(src, dest string) error {
 	}
 	defer srcFile.Close()
 
-	dstFile, err := os.Create(tempZip)
+	dstFile, err := os.OpenFile(tempZip, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
 		return fmt.Errorf("failed to create temp zip file: %v", err)
 	}
@@ -1375,11 +1382,15 @@ func unzip(src, dest string) error {
 				output, err := cmd.CombinedOutput()
 				if err == nil {
 					fmt.Printf("使用Node工具解压成功\n")
+					// 清理临时目录
+					os.RemoveAll(tempDir)
 					return nil
 				}
 				fmt.Printf("Node工具解压失败: %v, 输出: %s\n", err, string(output))
 			}
 		}
+		// 清理临时目录
+		os.RemoveAll(tempDir)
 		return fmt.Errorf("failed to open zip file: %v", err)
 	}
 	defer r.Close()
@@ -1439,8 +1450,8 @@ func unzip(src, dest string) error {
 		}
 	}
 
-	// 清理临时文件
-	os.Remove(tempZip)
+	// 清理临时文件和目录
+	os.RemoveAll(tempDir)
 
 	fmt.Printf("ZIP文件成功解压到: %s\n", dest)
 	return nil
