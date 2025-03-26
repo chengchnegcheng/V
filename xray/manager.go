@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -1356,6 +1357,55 @@ func (m *Manager) IsRunning() bool {
 
 // downloadFile 下载文件到指定路径
 func downloadFile(url, filepath string) error {
+	// 根据系统选择下载方法
+	if runtime.GOOS == "windows" {
+		return downloadFileWindows(url, filepath)
+	} else {
+		return downloadFileUnix(url, filepath)
+	}
+}
+
+// downloadFileUnix 在Linux/Unix系统上使用curl命令下载文件
+func downloadFileUnix(url, filepath string) error {
+	// 确保目录存在
+	if err := os.MkdirAll(path.Dir(filepath), 0755); err != nil {
+		return fmt.Errorf("failed to create directory: %v", err)
+	}
+
+	fmt.Printf("使用curl下载: %s\n", url)
+
+	// 创建curl命令，使用-L跟随重定向，-o指定输出文件
+	cmd := exec.Command("curl", "-L", "--connect-timeout", "30",
+		"--retry", "5", "--retry-delay", "2", "--retry-max-time", "120",
+		"-H", "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+		"-o", filepath, url)
+
+	// 获取输出
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("curl download failed: %v, output: %s", err, string(output))
+	}
+
+	// 验证下载文件是否存在
+	if _, err := os.Stat(filepath); os.IsNotExist(err) {
+		return fmt.Errorf("download completed but file not found")
+	}
+
+	// 检查文件是否为空
+	fileInfo, err := os.Stat(filepath)
+	if err != nil {
+		return fmt.Errorf("failed to stat file: %v", err)
+	}
+
+	if fileInfo.Size() == 0 {
+		return fmt.Errorf("downloaded file is empty")
+	}
+
+	return nil
+}
+
+// downloadFileWindows 在Windows系统上使用内置HTTP客户端下载文件
+func downloadFileWindows(url, filepath string) error {
 	// 创建http客户端，设置超时
 	client := &http.Client{
 		Timeout: 300 * time.Second, // 增加到300秒 (5分钟)
@@ -1550,6 +1600,36 @@ func (r *progressReader) Read(p []byte) (n int, err error) {
 
 // unzip 解压zip文件到指定目录
 func unzip(src, dest string) error {
+	// 先检查源文件是否存在和是否有效
+	fileInfo, err := os.Stat(src)
+	if err != nil {
+		return fmt.Errorf("failed to stat zip file: %v", err)
+	}
+
+	if fileInfo.Size() == 0 {
+		return fmt.Errorf("zip file is empty")
+	}
+
+	fmt.Printf("解压文件: %s (大小: %d 字节)\n", src, fileInfo.Size())
+
+	// 尝试使用系统命令解压(Linux/Unix)
+	if runtime.GOOS != "windows" {
+		// 确保目标目录存在
+		if err := os.MkdirAll(dest, 0755); err != nil {
+			return fmt.Errorf("failed to create destination directory: %v", err)
+		}
+
+		// 在Linux上使用unzip命令
+		cmd := exec.Command("unzip", "-o", src, "-d", dest)
+		output, err := cmd.CombinedOutput()
+		if err == nil {
+			fmt.Printf("使用系统unzip命令解压成功\n")
+			return nil
+		}
+
+		fmt.Printf("系统unzip命令失败: %v, 输出: %s\n尝试使用Go内置解压方法...\n", err, string(output))
+	}
+
 	// 使用原生 Go 实现，避免在 Windows 上使用 PowerShell 命令行
 	r, err := zip.OpenReader(src)
 	if err != nil {
@@ -1562,6 +1642,8 @@ func unzip(src, dest string) error {
 		return fmt.Errorf("failed to create destination directory: %v", err)
 	}
 
+	fmt.Printf("ZIP文件信息: 共包含 %d 个文件\n", len(r.File))
+
 	// 遍历 zip 文件中的所有文件/目录
 	for _, f := range r.File {
 		// 构建解压后的路径
@@ -1571,6 +1653,9 @@ func unzip(src, dest string) error {
 		if !strings.HasPrefix(fpath, filepath.Clean(dest)+string(os.PathSeparator)) {
 			return fmt.Errorf("illegal file path: %s", fpath)
 		}
+
+		// 打印出处理的文件名，便于调试
+		fmt.Printf("解压文件: %s\n", f.Name)
 
 		// 如果是目录，则创建
 		if f.FileInfo().IsDir() {
@@ -1607,6 +1692,7 @@ func unzip(src, dest string) error {
 		}
 	}
 
+	fmt.Printf("ZIP文件成功解压到: %s\n", dest)
 	return nil
 }
 
