@@ -1,7 +1,6 @@
 # V - 高性能代理服务器
 
 <div align="center">
-  <img src="docs/images/logo.png" alt="V Logo" width="200">
   <p>
     <a href="#功能特点">功能特点</a> •
     <a href="#快速开始">快速开始</a> •
@@ -61,13 +60,7 @@ V是一个用Go语言编写的高性能代理服务器，基于Xray-core，支�
 
 ### 安装方式
 
-#### 1. 直接下载运行
-1. 从Releases页面下载最新版本
-   - Windows: `v-windows-amd64.exe`
-   - Linux: `v-linux-amd64`
-   - macOS: `v-darwin-amd64`
-
-2. 运行程序：
+1. 运行程序：
    ```bash
    # Windows
    v-windows-amd64.exe
@@ -300,10 +293,3 @@ v/
 - [Element Plus](https://element-plus.org/) - UI组件库
 - [ECharts](https://echarts.apache.org/) - 图表库
 
-## 贡献
-
-欢迎提交Issue和Pull Request。
-
-## 许可证
-
-MIT License 
