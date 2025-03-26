@@ -1153,8 +1153,8 @@ func (m *Manager) Start() error {
 	// 启动xray进程
 	cmd := exec.Command(execPath, "-config", configPath)
 
-	// 配置平台特定的进程属性
-	configureProcessAttributes(cmd)
+	// 设置进程属性
+	cmd.SysProcAttr = &syscall.SysProcAttr{}
 
 	// 设置输出
 	stdout, err := os.Create(filepath.Join(logDir, "xray_stdout.log"))
@@ -1831,19 +1831,5 @@ func getFileSize(filePath string) string {
 		return fmt.Sprintf("%.2f MB", float64(sizeInBytes)/(1024*1024))
 	} else {
 		return fmt.Sprintf("%.2f GB", float64(sizeInBytes)/(1024*1024*1024))
-	}
-}
-
-// configureProcessAttributes 配置平台特定的进程属性
-func configureProcessAttributes(cmd *exec.Cmd) {
-	// 配置平台特定的进程属性
-	if runtime.GOOS == "windows" {
-		// 避免显示命令行窗口
-		cmd.SysProcAttr = &syscall.SysProcAttr{
-			HideWindow: true,
-		}
-	} else {
-		// 在Linux/Unix系统上使用默认的SysProcAttr
-		cmd.SysProcAttr = &syscall.SysProcAttr{}
 	}
 }
