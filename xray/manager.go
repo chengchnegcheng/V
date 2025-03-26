@@ -208,79 +208,26 @@ func (m *Manager) DownloadVersion(version string) error {
 		Percent: 10,
 	})
 
-	// 获取平台信息并记录日志
-	downloadOS, downloadArch := getPlatformInfo()
-	m.log.Info("Detected platform", logger.Fields{
-		"os":      downloadOS,
-		"arch":    downloadArch,
-		"version": version,
+	// 使用新的自动下载器
+	downloader := NewAutoDownloader(version)
+
+	// 发布进度事件 - 20%
+	m.PublishEvent(XrayEvent{
+		Type:    "download",
+		Version: version,
+		Status:  "progress",
+		Message: "启动自动下载器",
+		Percent: 20,
 	})
 
-	// 首先检查本地是否已有下载好的zip文件
-	localZipPath := filepath.Join("xray", "downloads", fmt.Sprintf("Xray-%s-%s.zip", downloadOS, downloadArch))
-	if _, err := os.Stat(localZipPath); err == nil {
-		m.log.Info("Found local Xray package, using it instead of downloading", logger.Fields{
-			"path": localZipPath,
-		})
+	// 尝试下载和安装
+	execPath := m.GetExecutablePath(version)
 
-		// 发布进度事件 - 30%
-		m.PublishEvent(XrayEvent{
-			Type:    "download",
-			Version: version,
-			Status:  "progress",
-			Message: "发现本地安装包，开始解压",
-			Percent: 30,
-		})
-
-		// 解压缩本地文件
-		if err := unzip(localZipPath, versionDir); err != nil {
-			m.log.Error("Failed to extract local xray package", logger.Fields{
-				"error": err,
-				"path":  localZipPath,
-			})
-			// 发布错误事件
-			m.PublishEvent(XrayEvent{
-				Type:    "download",
-				Version: version,
-				Status:  "error",
-				Message: fmt.Sprintf("解压本地安装包失败: %v", err),
-				Percent: 30,
-			})
-			return fmt.Errorf("failed to extract local xray package: %v", err)
-		}
-
-		// 发布进度事件 - 80%
-		m.PublishEvent(XrayEvent{
-			Type:    "download",
-			Version: version,
-			Status:  "progress",
-			Message: "解压完成，设置可执行权限",
-			Percent: 80,
-		})
-
-		// 设置可执行权限
-		execPath := m.GetExecutablePath(version)
-		if runtime.GOOS != "windows" {
-			if err := os.Chmod(execPath, 0755); err != nil {
-				m.log.Error("Failed to set executable permission", logger.Fields{
-					"error": err,
-					"path":  execPath,
-				})
-				// 发布错误事件
-				m.PublishEvent(XrayEvent{
-					Type:    "download",
-					Version: version,
-					Status:  "error",
-					Message: fmt.Sprintf("设置可执行权限失败: %v", err),
-					Percent: 80,
-				})
-				return fmt.Errorf("failed to set executable permission: %v", err)
-			}
-		}
-
-		m.log.Info("Installed xray from local package successfully", logger.Fields{
-			"version": version,
+	// 检查文件是否已经存在
+	if _, err := os.Stat(execPath); err == nil {
+		m.log.Info("Xray executable already exists", logger.Fields{
 			"path":    execPath,
+			"version": version,
 		})
 
 		// 发布完成事件
@@ -288,272 +235,79 @@ func (m *Manager) DownloadVersion(version string) error {
 			Type:    "download",
 			Version: version,
 			Status:  "completed",
-			Message: "安装成功",
+			Message: "可执行文件已存在，跳过下载",
 			Percent: 100,
 		})
 
 		return nil
 	}
 
-	// 发布进度事件 - 20%
+	// 接下来尝试执行下载
+	m.log.Info("Downloading Xray using auto downloader", logger.Fields{
+		"version": version,
+	})
+
+	// 发布进度事件 - 30%
 	m.PublishEvent(XrayEvent{
 		Type:    "download",
 		Version: version,
 		Status:  "progress",
-		Message: "本地无安装包，开始从网络下载",
-		Percent: 20,
+		Message: "开始下载Xray...",
+		Percent: 30,
 	})
 
-	// 构建下载URL
-	// 原始GitHub URL
-	githubUrl := fmt.Sprintf("https://github.com/XTLS/Xray-core/releases/download/%s/Xray-%s-%s.zip",
-		version, downloadOS, downloadArch)
-
-	// 备用镜像URL列表
-	mirrorUrls := []string{
-		// 高速镜像（优先尝试）
-		fmt.Sprintf("https://mirror.ghproxy.com/https://github.com/XTLS/Xray-core/releases/download/%s/Xray-%s-%s.zip",
-			version, downloadOS, downloadArch),
-		fmt.Sprintf("https://ghproxy.com/https://github.com/XTLS/Xray-core/releases/download/%s/Xray-%s-%s.zip",
-			version, downloadOS, downloadArch),
-		fmt.Sprintf("https://gh-proxy.com/https://github.com/XTLS/Xray-core/releases/download/%s/Xray-%s-%s.zip",
-			version, downloadOS, downloadArch),
-
-		// 国内镜像
-		fmt.Sprintf("https://download.fastgit.org/XTLS/Xray-core/releases/download/%s/Xray-%s-%s.zip",
-			version, downloadOS, downloadArch),
-		fmt.Sprintf("https://github.mirrorz.org/XTLS/Xray-core/releases/download/%s/Xray-%s-%s.zip",
-			version, downloadOS, downloadArch),
-		fmt.Sprintf("https://ghproxy.net/https://github.com/XTLS/Xray-core/releases/download/%s/Xray-%s-%s.zip",
-			version, downloadOS, downloadArch),
-		fmt.Sprintf("https://hub.gitmirror.com/https://github.com/XTLS/Xray-core/releases/download/%s/Xray-%s-%s.zip",
-			version, downloadOS, downloadArch),
-		fmt.Sprintf("https://gh2.yanqishui.work/https://github.com/XTLS/Xray-core/releases/download/%s/Xray-%s-%s.zip",
-			version, downloadOS, downloadArch),
-		fmt.Sprintf("https://kgithub.com/XTLS/Xray-core/releases/download/%s/Xray-%s-%s.zip",
-			version, downloadOS, downloadArch),
-
-		// 新增镜像
-		fmt.Sprintf("https://gitclone.com/github.com/XTLS/Xray-core/releases/download/%s/Xray-%s-%s.zip",
-			version, downloadOS, downloadArch),
-		fmt.Sprintf("https://proxy.zyun.vip/https://github.com/XTLS/Xray-core/releases/download/%s/Xray-%s-%s.zip",
-			version, downloadOS, downloadArch),
-		fmt.Sprintf("https://gh.ddlc.top/https://github.com/XTLS/Xray-core/releases/download/%s/Xray-%s-%s.zip",
-			version, downloadOS, downloadArch),
-		fmt.Sprintf("https://gh.idayer.com/https://github.com/XTLS/Xray-core/releases/download/%s/Xray-%s-%s.zip",
-			version, downloadOS, downloadArch),
-		fmt.Sprintf("https://hub.fgit.ml/XTLS/Xray-core/releases/download/%s/Xray-%s-%s.zip",
-			version, downloadOS, downloadArch),
-		fmt.Sprintf("https://hub.nuaa.cf/XTLS/Xray-core/releases/download/%s/Xray-%s-%s.zip",
-			version, downloadOS, downloadArch),
-	}
-
-	// 记录所有URL用于调试
-	allUrls := append([]string{githubUrl}, mirrorUrls...)
-
-	m.log.Info("Download URLs prepared", logger.Fields{
-		"urls":    allUrls,
-		"os":      downloadOS,
-		"arch":    downloadArch,
-		"version": version,
-	})
-
-	// 创建下载目录（如果不存在）
-	if err := os.MkdirAll(filepath.Join("xray", "downloads"), 0755); err != nil {
-		m.log.Warn("Failed to create downloads directory", logger.Fields{
-			"error": err,
-		})
-	}
-
-	// 下载到临时文件
-	tempFile := filepath.Join(versionDir, "xray.zip")
-
-	// 尝试从所有镜像下载
-	var lastError error
-	var downloaded bool = false
-	var attemptErrors = make(map[string]string) // 记录每个镜像的错误
-
-	// 首先尝试所有镜像
-	for i, url := range mirrorUrls {
-		m.log.Info("Trying mirror", logger.Fields{
-			"url":     url,
-			"attempt": i + 1,
-			"total":   len(mirrorUrls),
+	// 启动下载
+	err := downloader.DownloadAndInstall()
+	if err != nil {
+		m.log.Error("Failed to download and install", logger.Fields{
+			"error":   err,
+			"version": version,
 		})
 
-		// 发布进度事件
-		m.PublishEvent(XrayEvent{
-			Type:    "download",
-			Version: version,
-			Status:  "progress",
-			Message: fmt.Sprintf("尝试从镜像 %d/%d 下载 Xray v%s", i+1, len(mirrorUrls), version),
-			Percent: 30 + (i * 2), // 减小每个镜像的百分比增量，避免百分比过快增长
-			Details: map[string]string{
-				"url":     url,
-				"os":      downloadOS,
-				"arch":    downloadArch,
-				"attempt": fmt.Sprintf("%d/%d", i+1, len(mirrorUrls)),
-			},
-		})
-
-		// 记录开始时间，用于计算下载耗时
-		startTime := time.Now()
-
-		err := downloadFile(url, tempFile)
-
-		// 计算耗时
-		elapsed := time.Since(startTime)
-
-		if err == nil {
-			downloaded = true
-			m.log.Info("Successfully downloaded from mirror", logger.Fields{
-				"url":      url,
-				"attempt":  i + 1,
-				"duration": elapsed.String(),
-				"size":     getFileSize(tempFile),
+		// 尝试使用Node.js工具作为后备
+		if downloader.hasToolkit() {
+			m.log.Info("Trying Node.js toolkit as fallback", logger.Fields{
+				"version": version,
 			})
 
-			// 发布进度事件 - 下载成功
+			// 发布进度事件 - 备用方法
 			m.PublishEvent(XrayEvent{
 				Type:    "download",
 				Version: version,
 				Status:  "progress",
-				Message: fmt.Sprintf("从镜像 %d 下载成功，耗时 %s", i+1, elapsed.Round(time.Second).String()),
+				Message: "自动下载失败，尝试使用Node.js工具作为备用方案",
 				Percent: 50,
-				Details: map[string]string{
-					"url":      url,
-					"duration": elapsed.String(),
-					"success":  "true",
-				},
 			})
 
-			break
-		}
+			// 执行Node.js工具
+			if err := downloader.runToolkit(); err != nil {
+				m.log.Error("Node.js toolkit failed", logger.Fields{
+					"error": err,
+				})
 
-		lastError = err
-		attemptErrors[url] = err.Error()
+				// 发布错误事件
+				m.PublishEvent(XrayEvent{
+					Type:    "download",
+					Version: version,
+					Status:  "error",
+					Message: fmt.Sprintf("所有下载方法均失败: %v", err),
+					Percent: 50,
+				})
 
-		m.log.Warn("Failed to download from mirror, trying next", logger.Fields{
-			"error":    err,
-			"url":      url,
-			"attempt":  i + 1,
-			"duration": elapsed.String(),
-		})
-
-		// 发布进度事件 - 当前镜像失败
-		m.PublishEvent(XrayEvent{
-			Type:    "download",
-			Version: version,
-			Status:  "progress",
-			Message: fmt.Sprintf("镜像 %d 下载失败: %v", i+1, err),
-			Percent: 30 + (i * 2),
-			Details: map[string]string{
-				"url":     url,
-				"error":   err.Error(),
-				"success": "false",
-			},
-		})
-	}
-
-	// 如果所有镜像都失败，尝试GitHub直接下载
-	if !downloaded {
-		m.log.Warn("All mirrors failed, trying GitHub directly", logger.Fields{
-			"error":        lastError,
-			"mirror_count": len(mirrorUrls),
-			"errors":       attemptErrors,
-		})
-
-		// 发布进度事件
-		m.PublishEvent(XrayEvent{
-			Type:    "download",
-			Version: version,
-			Status:  "progress",
-			Message: "所有镜像下载失败，尝试从GitHub直接下载",
-			Percent: 45,
-			Details: map[string]interface{}{
-				"mirror_errors": attemptErrors,
-			},
-		})
-
-		// 记录开始时间
-		startTime := time.Now()
-
-		err := downloadFile(githubUrl, tempFile)
-
-		// 计算耗时
-		elapsed := time.Since(startTime)
-
-		if err == nil {
-			downloaded = true
-			m.log.Info("Successfully downloaded from GitHub", logger.Fields{
-				"url":      githubUrl,
-				"duration": elapsed.String(),
-				"size":     getFileSize(tempFile),
-			})
+				return fmt.Errorf("all download methods failed: %v", err)
+			}
 		} else {
-			lastError = err
-			attemptErrors[githubUrl] = err.Error()
-
-			m.log.Error("Failed to download from GitHub", logger.Fields{
-				"error":    err,
-				"url":      githubUrl,
-				"duration": elapsed.String(),
+			// 发布错误事件
+			m.PublishEvent(XrayEvent{
+				Type:    "download",
+				Version: version,
+				Status:  "error",
+				Message: fmt.Sprintf("下载失败: %v", err),
+				Percent: 50,
 			})
+
+			return fmt.Errorf("download failed: %v", err)
 		}
-	}
-
-	if !downloaded {
-		m.log.Error("Failed to download xray from all sources", logger.Fields{
-			"error":        lastError,
-			"version":      version,
-			"os":           downloadOS,
-			"arch":         downloadArch,
-			"mirror_count": len(mirrorUrls) + 1, // +1 for GitHub
-			"errors":       attemptErrors,
-		})
-		// 发布错误事件
-		m.PublishEvent(XrayEvent{
-			Type:    "download",
-			Version: version,
-			Status:  "error",
-			Message: fmt.Sprintf("所有下载源均失败: %v", lastError),
-			Percent: 45,
-			Details: map[string]interface{}{
-				"error":         lastError.Error(),
-				"version":       version,
-				"os":            downloadOS,
-				"arch":          downloadArch,
-				"all_errors":    attemptErrors,
-				"download_urls": append(mirrorUrls, githubUrl),
-			},
-		})
-		return fmt.Errorf("failed to download xray from all sources: %v", lastError)
-	}
-
-	// 发布进度事件 - 60%
-	m.PublishEvent(XrayEvent{
-		Type:    "download",
-		Version: version,
-		Status:  "progress",
-		Message: "下载完成，开始解压",
-		Percent: 60,
-	})
-
-	// 解压缩
-	if err := unzip(tempFile, versionDir); err != nil {
-		m.log.Error("Failed to extract xray", logger.Fields{
-			"error": err,
-			"file":  tempFile,
-		})
-		// 发布错误事件
-		m.PublishEvent(XrayEvent{
-			Type:    "download",
-			Version: version,
-			Status:  "error",
-			Message: fmt.Sprintf("解压失败: %v", err),
-			Percent: 60,
-		})
-		return fmt.Errorf("failed to extract xray: %v", err)
 	}
 
 	// 发布进度事件 - 80%
@@ -561,32 +315,9 @@ func (m *Manager) DownloadVersion(version string) error {
 		Type:    "download",
 		Version: version,
 		Status:  "progress",
-		Message: "解压完成，清理临时文件",
+		Message: "下载完成，验证文件",
 		Percent: 80,
 	})
-
-	// 删除临时文件
-	os.Remove(tempFile)
-
-	// 设置可执行权限
-	execPath := m.GetExecutablePath(version)
-	if runtime.GOOS != "windows" {
-		if err := os.Chmod(execPath, 0755); err != nil {
-			m.log.Error("Failed to set executable permission", logger.Fields{
-				"error": err,
-				"path":  execPath,
-			})
-			// 发布错误事件
-			m.PublishEvent(XrayEvent{
-				Type:    "download",
-				Version: version,
-				Status:  "error",
-				Message: fmt.Sprintf("设置可执行权限失败: %v", err),
-				Percent: 80,
-			})
-			return fmt.Errorf("failed to set executable permission: %v", err)
-		}
-	}
 
 	// 验证可执行文件是否存在且有效
 	if _, err := os.Stat(execPath); os.IsNotExist(err) {
@@ -620,35 +351,6 @@ func (m *Manager) DownloadVersion(version string) error {
 	})
 
 	return nil
-}
-
-// 辅助函数获取系统平台信息
-func getPlatformInfo() (string, string) {
-	// 确定操作系统
-	osName := runtime.GOOS
-	if osName == "darwin" {
-		osName = "macos"
-	}
-
-	// 确定系统架构
-	arch := runtime.GOARCH
-	// 特殊情况处理
-	if arch == "amd64" {
-		arch = "64"
-	} else if arch == "386" {
-		arch = "32"
-	} else if arch == "arm64" {
-		if osName == "macos" {
-			// 苹果M系列处理器
-			arch = "arm64-v8a"
-		} else {
-			arch = "arm64-v8a"
-		}
-	} else if arch == "arm" {
-		arch = "arm32-v7a"
-	}
-
-	return osName, arch
 }
 
 // SwitchVersion 切换xray版本

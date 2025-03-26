@@ -1,6 +1,7 @@
 /**
  * Xray下载辅助工具
  * 用于手动下载Xray版本并放置到正确位置
+ * 增强版：与Go自动下载器兼容
  */
 
 const fs = require('fs');
@@ -30,6 +31,8 @@ const config = {
   mirrors: [
     'https://mirror.ghproxy.com/https://github.com/XTLS/Xray-core/releases/download/',
     'https://github.mirrorz.org/XTLS/Xray-core/releases/download/',
+    'https://ghproxy.com/https://github.com/XTLS/Xray-core/releases/download/',
+    'https://gh-proxy.com/https://github.com/XTLS/Xray-core/releases/download/',
     'https://github.com/XTLS/Xray-core/releases/download/'
   ]
 };
@@ -76,20 +79,51 @@ function getPlatformInfo() {
   return { os: osName, arch: archName };
 }
 
-// 下载文件
+// 下载文件 - 增强版，支持多种HTTP客户端
 async function downloadFile(url, dest) {
+  // 确保下载目录存在
+  const downloadDir = path.dirname(dest);
+  if (!existsSync(downloadDir)) {
+    mkdirSync(downloadDir, { recursive: true });
+  }
+  
+  console.log(`开始下载: ${url}`);
+  console.log(`保存到: ${dest}`);
+  
+  // 尝试不同的下载方式
+  try {
+    await downloadWithHttps(url, dest);
+    return;
+  } catch (err) {
+    console.error(`HTTPS下载失败: ${err.message}`);
+    console.log('尝试使用系统命令下载...');
+    
+    try {
+      await downloadWithSystem(url, dest);
+      return;
+    } catch (err) {
+      console.error(`系统命令下载失败: ${err.message}`);
+      throw new Error(`所有下载方法均失败: ${err.message}`);
+    }
+  }
+}
+
+// 使用Node.js内置HTTPS模块下载
+async function downloadWithHttps(url, dest) {
   const streamPipeline = promisify(pipeline);
   
   return new Promise((resolve, reject) => {
-    console.log(`开始下载: ${url}`);
-    console.log(`保存到: ${dest}`);
-    
-    const request = https.get(url, async (response) => {
+    const request = https.get(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      },
+      timeout: 30000 // 30秒超时
+    }, async (response) => {
       if (response.statusCode === 302 || response.statusCode === 301) {
         // 处理重定向
         console.log(`重定向到: ${response.headers.location}`);
         try {
-          await downloadFile(response.headers.location, dest);
+          await downloadWithHttps(response.headers.location, dest);
           resolve();
         } catch (err) {
           reject(err);
@@ -115,41 +149,139 @@ async function downloadFile(url, dest) {
       console.error(`下载错误: ${err.message}`);
       reject(err);
     });
+    
+    request.on('timeout', () => {
+      request.destroy();
+      reject(new Error('下载超时'));
+    });
   });
 }
 
-// 解压文件
+// 使用系统命令下载
+async function downloadWithSystem(url, dest) {
+  return new Promise((resolve, reject) => {
+    let command = '';
+    if (process.platform === 'win32') {
+      // Windows - 使用PowerShell
+      command = `powershell -Command "Invoke-WebRequest -Uri '${url}' -OutFile '${dest}' -UseBasicParsing"`;
+    } else {
+      // Linux/Mac - 使用curl
+      command = `curl -L -o "${dest}" --connect-timeout 30 --retry 3 "${url}"`;
+    }
+    
+    console.log(`执行命令: ${command}`);
+    exec(command, (error, stdout, stderr) => {
+      if (error) {
+        console.error(`命令执行失败: ${error.message}`);
+        console.error(`标准错误: ${stderr}`);
+        reject(error);
+        return;
+      }
+      
+      // 验证文件是否下载成功
+      try {
+        const stats = fs.statSync(dest);
+        if (stats.size === 0) {
+          reject(new Error('下载文件大小为0字节'));
+          return;
+        }
+        console.log(`文件下载成功，大小: ${stats.size} 字节`);
+        resolve();
+      } catch (err) {
+        reject(new Error(`验证文件失败: ${err.message}`));
+      }
+    });
+  });
+}
+
+// 解压文件 - 增强版，更好的错误处理
 async function extractZip(zipPath, destDir) {
   console.log(`解压 ${zipPath} 到 ${destDir}`);
+  
+  // 确保目标目录存在
+  if (!existsSync(destDir)) {
+    mkdirSync(destDir, { recursive: true });
+  }
+  
+  // 首先尝试使用Node.js的extract-zip
   try {
     await extract(zipPath, { dir: destDir });
-    console.log('解压完成!');
+    console.log('使用Node.js解压成功!');
     
-    // 如果是Windows，确保xray.exe有执行权限
-    if (process.platform === 'win32') {
-      const xrayExePath = path.join(destDir, 'xray.exe');
-      if (existsSync(xrayExePath)) {
-        console.log(`Xray可执行文件找到: ${xrayExePath}`);
-      } else {
-        console.error(`错误: ${xrayExePath} 不存在!`);
-      }
-    } else {
-      // 在Linux/macOS上设置执行权限
-      const xrayPath = path.join(destDir, 'xray');
-      if (existsSync(xrayPath)) {
-        exec(`chmod +x "${xrayPath}"`, (err) => {
-          if (err) console.error(`设置执行权限失败: ${err.message}`);
-          else console.log('已设置执行权限');
-        });
-      }
-    }
+    // 设置可执行权限（如果需要）
+    await setExecutablePermission(destDir);
+    return;
   } catch (err) {
-    console.error(`解压失败: ${err.message}`);
-    throw err;
+    console.error(`Node.js解压失败: ${err.message}`);
+    console.log('尝试使用系统命令解压...');
+  }
+  
+  // 尝试使用系统命令
+  try {
+    await extractWithSystem(zipPath, destDir);
+    console.log('使用系统命令解压成功!');
+    
+    // 设置可执行权限（如果需要）
+    await setExecutablePermission(destDir);
+    return;
+  } catch (err) {
+    console.error(`系统命令解压失败: ${err.message}`);
+    throw new Error(`所有解压方法均失败: ${err.message}`);
   }
 }
 
-// 下载Xray版本
+// 使用系统命令解压
+async function extractWithSystem(zipPath, destDir) {
+  return new Promise((resolve, reject) => {
+    let command = '';
+    if (process.platform === 'win32') {
+      // Windows - 使用PowerShell
+      command = `powershell -Command "Expand-Archive -Path '${zipPath}' -DestinationPath '${destDir}' -Force"`;
+    } else {
+      // Linux/Mac - 使用unzip
+      command = `unzip -o "${zipPath}" -d "${destDir}"`;
+    }
+    
+    console.log(`执行命令: ${command}`);
+    exec(command, (error, stdout, stderr) => {
+      if (error) {
+        console.error(`命令执行失败: ${error.message}`);
+        console.error(`标准错误: ${stderr}`);
+        reject(error);
+        return;
+      }
+      
+      console.log(`命令输出: ${stdout}`);
+      resolve();
+    });
+  });
+}
+
+// 设置可执行权限
+async function setExecutablePermission(destDir) {
+  if (process.platform === 'win32') {
+    // Windows不需要设置可执行权限
+    return;
+  }
+  
+  // Linux/Mac需要设置权限
+  const xrayPath = path.join(destDir, 'xray');
+  if (existsSync(xrayPath)) {
+    return new Promise((resolve, reject) => {
+      exec(`chmod +x "${xrayPath}"`, (err) => {
+        if (err) {
+          console.error(`设置执行权限失败: ${err.message}`);
+          reject(err);
+          return;
+        }
+        console.log('已设置可执行权限');
+        resolve();
+      });
+    });
+  }
+}
+
+// 下载Xray版本 - 增强版
 async function downloadXrayVersion(version) {
   if (!config.versions.includes(version)) {
     console.error(`错误: 不支持的版本 ${version}`);
@@ -178,23 +310,32 @@ async function downloadXrayVersion(version) {
     console.log(`${version} 已存在: ${execPath}`);
     return true;
   }
+
+  console.log(`开始下载 Xray 版本 ${version}...`);
   
   // 尝试所有镜像
   let downloaded = false;
+  let lastError = null;
+  
   for (const mirror of config.mirrors) {
     const url = `${mirror}${version}/${fileName}`;
     try {
+      console.log(`尝试镜像: ${mirror}`);
       await downloadFile(url, zipPath);
       downloaded = true;
       break;
     } catch (err) {
       console.error(`从 ${mirror} 下载失败: ${err.message}`);
+      lastError = err;
       console.log('尝试下一个镜像...');
     }
   }
   
   if (!downloaded) {
     console.error('所有镜像下载失败!');
+    if (lastError) {
+      console.error(`最后一个错误: ${lastError.message}`);
+    }
     return false;
   }
   
